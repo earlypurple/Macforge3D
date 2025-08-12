@@ -1,86 +1,95 @@
 import SwiftUI
 
 struct TextTo3DView: View {
-    @State private var prompt: String = "a detailed dragon figurine"
-    @State private var modelPath: String?
-    @State private var isLoading: Bool = false
-    @State private var errorMessage: String?
+    // State for the text prompt entered by the user.
+    @State private var prompt: String = "a comfortable armchair, modern design"
 
-    private let textTo3DGenerator = TextTo3D()
+    // State to track the generation process for disabling UI elements.
+    @State private var isGenerating: Bool = false
+
+    // State to hold the result from the generation script.
+    @State private var generatedModelPath: String?
 
     var body: some View {
-        VStack {
-            Text("Text-to-3D Generation")
-                .font(.title)
-                .padding()
-
-            TextEditor(text: $prompt)
-                .frame(height: 100)
-                .cornerRadius(8)
-                .padding()
-                .shadow(radius: 5)
-
-            Button(action: generateModel) {
-                Text("Generate Model")
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
+        Form {
+            Section(header: Text("Model Description").font(.headline)) {
+                TextEditor(text: $prompt)
+                    .frame(height: 100)
+                    .padding(4)
+                    .background(Color(NSColor.textBackgroundColor))
                     .cornerRadius(8)
-            }
-            .disabled(isLoading)
-            .padding()
-
-            if isLoading {
-                ProgressView("Generating model...")
-                    .padding()
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
             }
 
-            if let errorMessage = errorMessage {
-                Text(errorMessage)
-                    .foregroundColor(.red)
-                    .padding()
+            Section {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        print("Generate button tapped. Prompt: \(prompt)")
+                        isGenerating = true
+                        generatedModelPath = nil // Clear previous result
+
+                        // Run the generation in a background task
+                        Task {
+                            let result = await TextTo3DGenerator.generate(prompt: prompt)
+
+                            // Update the UI on the main thread
+                            await MainActor.run {
+                                self.generatedModelPath = result
+                                self.isGenerating = false
+                            }
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                            Text("Generate Model")
+                        }
+                        .padding(.horizontal)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isGenerating || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Spacer()
+                }
+            }
+            .padding(.top)
+
+            if isGenerating {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle())
+                    Text("Generating model...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .padding()
             }
 
-            // Display the 3D preview if a model path is available
-            if let modelPath = modelPath {
-                ThreeDPreviewView(filePath: modelPath)
-                    .frame(height: 300)
-                    .cornerRadius(8)
-                    .padding()
-                    .shadow(radius: 5)
-            }
+            if let modelPath = generatedModelPath {
+                // The path from Python is relative to the project root. We create a file URL from it.
+                // Note: This assumes the app is run from the project root during development.
+                let modelURL = URL(fileURLWithPath: modelPath)
 
-            Spacer()
-        }
-        .padding()
-    }
-
-    private func generateModel() {
-        isLoading = true
-        errorMessage = nil
-        modelPath = nil
-
-        textTo3DGenerator.generateModel(prompt: prompt) { result in
-            isLoading = false
-            switch result {
-            case .success(let path):
-                modelPath = path
-            case .failure(let error):
-                switch error {
-                case .pythonScriptNotFound:
-                    errorMessage = "Error: Python script not found."
-                case .pythonFunctionNotFound:
-                    errorMessage = "Error: Python function not found."
-                case .modelGenerationFailed(let message):
-                    errorMessage = "Error: Model generation failed: \(message)"
+                Section(header: Text("Generated Model Preview").font(.headline)) {
+                    ThreeDPreviewView(modelURL: modelURL)
+                        .frame(height: 350)
+                        .background(Color(NSColor.windowBackgroundColor))
+                        .cornerRadius(10)
                 }
             }
         }
+        .padding()
+        .navigationTitle("Text to 3D")
     }
 }
 
 struct TextTo3DView_Previews: PreviewProvider {
     static var previews: some View {
         TextTo3DView()
+            .frame(width: 500)
     }
 }
