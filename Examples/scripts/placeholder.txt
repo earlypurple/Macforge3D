@@ -1,0 +1,1 @@
+This directory will contain example scripts for automating tasks in MacForge3D.
