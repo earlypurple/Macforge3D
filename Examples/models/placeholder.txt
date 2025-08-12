@@ -1,0 +1,1 @@
+This directory will contain example 3D models in various formats.
