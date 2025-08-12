@@ -2,11 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     // State to keep track of the selected panel in the sidebar.
-    @State private var selection: Panel? = .textTo3D
+    @State private var selection: Panel? = .figurineGenerator
 
     // Enum to represent the different navigation destinations.
-    // This makes the code cleaner and less prone to errors.
     enum Panel: String, CaseIterable, Identifiable {
+        case figurineGenerator = "Figurine Generator"
         case textTo3D = "Text to 3D"
         case audioTo3D = "Audio to 3D"
         case parametric = "Parametric"
@@ -17,6 +17,8 @@ struct ContentView: View {
         // Returns the appropriate system icon for each panel.
         var iconName: String {
             switch self {
+            case .figurineGenerator:
+                return "person.crop.square.fill"
             case .textTo3D:
                 return "text.bubble.fill"
             case .audioTo3D:
@@ -42,22 +44,17 @@ struct ContentView: View {
 
         } detail: {
             // The detail view changes based on the sidebar selection.
-            // These are placeholders that will be replaced by actual views in later steps.
             switch selection {
+            case .figurineGenerator:
+                FigurineGeneratorView()
             case .textTo3D:
                 TextTo3DView()
             case .audioTo3D:
-                Text("Audio-to-3D View Placeholder")
-                    .font(.largeTitle)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                AudioTo3DView()
             case .parametric:
-                Text("Parametric Shapes View Placeholder")
-                    .font(.largeTitle)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ParametricView()
             case .simulation:
-                Text("Simulation View Placeholder")
-                    .font(.largeTitle)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                SimulationView()
             case .none:
                 // A view to show when no selection is made.
                 Text("Select a tool from the sidebar to begin.")
