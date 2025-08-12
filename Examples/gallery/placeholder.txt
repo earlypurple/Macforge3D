@@ -1,0 +1,1 @@
+This directory will contain examples of 3D models created with MacForge3D.
