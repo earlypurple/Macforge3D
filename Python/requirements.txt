@@ -11,6 +11,9 @@ shapely>=2.0.0
 manifold3d>=1.2.0
 librosa==0.11.0
 
+# 3D Model Exporting
+pygltflib==1.15.3
+
 # Testing
 pytest==8.0.0
 soundfile==0.13.1
