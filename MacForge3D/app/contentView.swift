@@ -8,6 +8,7 @@ struct ContentView: View {
     enum Panel: String, CaseIterable, Identifiable {
         case figurineGenerator = "Figurine Generator"
         case textTo3D = "Text to 3D"
+        case imageTo3D = "Image to 3D"
         case audioTo3D = "Audio to 3D"
         case parametric = "Parametric"
         case simulation = "Simulation"
@@ -22,6 +23,8 @@ struct ContentView: View {
                 return "person.crop.square.fill"
             case .textTo3D:
                 return "text.bubble.fill"
+            case .imageTo3D:
+                return "photo.fill"
             case .audioTo3D:
                 return "waveform.path.ecg"
             case .parametric:
@@ -52,6 +55,8 @@ struct ContentView: View {
                 FigurineGeneratorView()
             case .textTo3D:
                 TextTo3DView()
+            case .imageTo3D:
+                ImageTo3DView()
             case .audioTo3D:
                 AudioTo3DView()
             case .parametric:
