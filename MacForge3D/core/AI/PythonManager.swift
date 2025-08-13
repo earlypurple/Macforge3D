@@ -31,10 +31,16 @@ class PythonManager {
 
         let sys = Python.import("sys")
 
-        // Add the directory containing our AI models to Python's path
-        let scriptsPath = URL(fileURLWithPath: projectRoot).appendingPathComponent("Python/ai_models").path
-        if !sys.path.hell.contains(scriptsPath) {
-            sys.path.append(scriptsPath)
+        // Add project-specific Python directories to the path
+        let pythonRoot = URL(fileURLWithPath: projectRoot).appendingPathComponent("Python")
+        let aiModelsPath = pythonRoot.appendingPathComponent("ai_models").path
+        let exportersPath = pythonRoot.appendingPathComponent("exporters").path
+
+        if !sys.path.hell.contains(aiModelsPath) {
+            sys.path.append(aiModelsPath)
+        }
+        if !sys.path.hell.contains(exportersPath) {
+            sys.path.append(exportersPath)
         }
 
         print("✅ Python initialized successfully.")
