@@ -11,6 +11,7 @@ struct ContentView: View {
         case audioTo3D = "Audio to 3D"
         case parametric = "Parametric"
         case simulation = "Simulation"
+        case engraving = "3D Engraving"
 
         var id: String { self.rawValue }
 
@@ -27,6 +28,8 @@ struct ContentView: View {
                 return "cube.transparent"
             case .simulation:
                 return "flame.fill"
+            case .engraving:
+                return "square.and.pencil"
             }
         }
     }
@@ -55,6 +58,8 @@ struct ContentView: View {
                 ParametricView()
             case .simulation:
                 SimulationView()
+            case .engraving:
+                EngravingView()
             case .none:
                 // A view to show when no selection is made.
                 Text("Select a tool from the sidebar to begin.")
