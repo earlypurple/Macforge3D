@@ -1,14 +1,21 @@
 import SwiftUI
+import Combine
 
 struct TextTo3DView: View {
     // State for the text prompt entered by the user.
     @State private var prompt: String = "a comfortable armchair, modern design"
+
+    // State for the selected model color.
+    @State private var modelColor: Color = .blue
 
     // State to track the generation process for disabling UI elements.
     @State private var isGenerating: Bool = false
 
     // State to hold the result from the generation script.
     @State private var generatedModelPath: String?
+
+    // Task for debounced generation.
+    @State private var generationTask: Task<Void, Never>?
 
     var body: some View {
         Form {
@@ -22,40 +29,14 @@ struct TextTo3DView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                     )
-            }
-
-            Section {
-                HStack {
-                    Spacer()
-                    Button(action: {
-                        print("Generate button tapped. Prompt: \(prompt)")
-                        isGenerating = true
-                        generatedModelPath = nil // Clear previous result
-
-                        // Run the generation in a background task
-                        Task {
-                            let result = await TextTo3DGenerator.generate(prompt: prompt)
-
-                            // Update the UI on the main thread
-                            await MainActor.run {
-                                self.generatedModelPath = result
-                                self.isGenerating = false
-                            }
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: "sparkles")
-                            Text("Generate Model")
-                        }
-                        .padding(.horizontal)
+                    .onChange(of: prompt) {
+                        triggerGeneration()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(isGenerating || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Spacer()
-                }
             }
-            .padding(.top)
+
+            Section(header: Text("Customization").font(.headline)) {
+                ColorPicker("Model Color", selection: $modelColor)
+            }
 
             if isGenerating {
                 HStack {
@@ -70,12 +51,10 @@ struct TextTo3DView: View {
             }
 
             if let modelPath = generatedModelPath {
-                // The path from Python is relative to the project root. We create a file URL from it.
-                // Note: This assumes the app is run from the project root during development.
                 let modelURL = URL(fileURLWithPath: modelPath)
 
                 Section(header: Text("Generated Model Preview").font(.headline)) {
-                    ThreeDPreviewView(modelURL: modelURL)
+                    ThreeDPreviewView(modelURL: modelURL, modelColor: modelColor)
                         .frame(height: 350)
                         .background(Color(NSColor.windowBackgroundColor))
                         .cornerRadius(10)
@@ -84,6 +63,46 @@ struct TextTo3DView: View {
         }
         .padding()
         .navigationTitle("Text to 3D")
+        .onAppear(perform: triggerGeneration) // Generate on first appearance
+    }
+
+    private func triggerGeneration() {
+        // Cancel any previously scheduled generation task.
+        generationTask?.cancel()
+
+        // Don't generate if the prompt is empty.
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedPrompt.isEmpty {
+            isGenerating = false
+            return
+        }
+
+        // Schedule a new generation task with a debounce.
+        generationTask = Task {
+            do {
+                // Set generating state immediately for responsiveness
+                await MainActor.run {
+                    self.isGenerating = true
+                }
+
+                // Wait for 500ms. If the task is cancelled, it will throw.
+                try await Task.sleep(for: .milliseconds(500))
+
+                // If we are here, the user stopped typing. Start the real generation.
+                print("Starting generation for prompt: \(prompt)")
+                let result = await TextTo3DGenerator.generate(prompt: prompt)
+
+                // Update the UI on the main thread.
+                await MainActor.run {
+                    self.generatedModelPath = result
+                    self.isGenerating = false
+                }
+            } catch {
+                // Task was cancelled.
+                print("Generation task cancelled.")
+                // The isGenerating state will be handled by the next task that starts.
+            }
+        }
     }
 }
 

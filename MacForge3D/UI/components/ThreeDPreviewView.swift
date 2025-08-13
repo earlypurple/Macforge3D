@@ -5,6 +5,8 @@ import SceneKit
 struct ThreeDPreviewView: View {
     // The URL of the 3D model file to display.
     let modelURL: URL
+    // The color to apply to the model's materials.
+    let modelColor: Color
 
     // The SceneKit scene that will be loaded.
     private let scene: SCNScene?
@@ -14,20 +16,39 @@ struct ThreeDPreviewView: View {
         scene == nil
     }
 
-    init(modelURL: URL) {
+    init(modelURL: URL, modelColor: Color = .gray) {
         self.modelURL = modelURL
+        self.modelColor = modelColor
 
         // Attempt to load the scene from the URL.
-        // This is a failable initializer, so we handle the nil case.
         do {
-            self.scene = try SCNScene(url: modelURL, options: [
+            let loadedScene = try SCNScene(url: modelURL, options: [
                 .checkConsistency: true,
                 .flattenScene: true,
                 .createNormalsIfAbsent: true
             ])
+
+            // Apply the color to all materials in the scene.
+            let nsColor = NSColor(modelColor)
+            self.applyColor(nsColor, to: loadedScene.rootNode)
+
+            self.scene = loadedScene
         } catch {
             print("❌ Failed to load scene from URL: \(modelURL). Error: \(error)")
             self.scene = nil
+        }
+    }
+
+    /// Recursively traverses the node hierarchy and applies the color to any node with geometry.
+    private func applyColor(_ color: NSColor, to node: SCNNode) {
+        if let geometry = node.geometry {
+            geometry.materials.forEach { material in
+                material.diffuse.contents = color
+            }
+        }
+
+        for child in node.childNodes {
+            applyColor(color, to: child)
         }
     }
 
@@ -83,7 +104,7 @@ struct ThreeDPreviewView_Previews: PreviewProvider {
         try? scene.write(to: successURL, options: nil, delegate: nil, progressHandler: nil)
 
         return Group {
-            ThreeDPreviewView(modelURL: successURL)
+            ThreeDPreviewView(modelURL: successURL, modelColor: .blue)
                 .padding()
                 .previewLayout(.fixed(width: 400, height: 400))
                 .previewDisplayName("Success")
