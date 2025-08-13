@@ -102,15 +102,8 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 
 # Install packages from requirements.txt
-# Note: This file will be created in the next step of the plan.
-# For now, we will use the same list as the old script.
-if [ -f "Python/requirements.txt" ]; then
-    echo "› Installing packages from Python/requirements.txt..."
-    pip install -r "Python/requirements.txt"
-else
-    echo "› requirements.txt not found. Installing default packages..."
-    pip install torch transformers diffusers accelerate Pillow numpy trimesh safetensors
-fi
+echo "› Installing packages from Python/requirements.txt..."
+pip install -r "Python/requirements.txt"
 
 echo "✅ Python packages installed."
 deactivate
