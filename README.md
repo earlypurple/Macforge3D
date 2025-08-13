@@ -84,8 +84,9 @@ git clone https://github.com/votre-username/MacForge3D.git
 cd MacForge3D
 
 # 2. Lancer l'installation automatique
-chmod +x Scripts/setup_project.sh
-./Scripts/setup_project.sh
+# Ce script universel fonctionne sur macOS (Intel/Apple Silicon) et Linux.
+chmod +x Scripts/setup.sh
+./Scripts/setup.sh
 ```
 
 Le script d'installation configure automatiquement :
