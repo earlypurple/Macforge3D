@@ -1,1 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
+# Virtual Environment
+python_env/
+.venv/
+env/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Xcode
+*.xcodeproj/project.xcworkspace
+*.xcodeproj/xcuserdata/
+*.xcscmblueprint
+*.xcschememanagement.plist
+DerivedData/
+
+# macOS
+.DS_Store

@@ -9,3 +9,6 @@ safetensors==0.4.0
 fonttools>=4.0.0
 shapely>=2.0.0
 manifold3d>=1.2.0
+
+# Testing
+pytest==8.0.0

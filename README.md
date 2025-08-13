@@ -145,13 +145,27 @@ open MacForge3D.xcodeproj
 â”‚ Metal + MetalPerformanceShaders  â”‚
 â”œâ”€ Intelligence Artificielle â”€â”€â”€â”€â”€â”¤
 â”‚ PyTorch + Transformers + PythonKitâ”‚
-â”œâ”€ Calculs Scientifiques â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”œâ”€ Calculs Scientifiques â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
 â”‚ Accelerate + Eigen + OpenMP      â”‚
 â”œâ”€ Audio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤  
 â”‚ AVFoundation + CoreAudio         â”‚
 â””â”€ DonnÃ©es â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
   Core Data + CloudKit + Git LFS
 ```
+
+### ðŸ§ª **Tests**
+Pour garantir la qualitÃ© et la stabilitÃ© de l'application, nous avons mis en place une suite de tests complÃ¨te.
+
+```bash
+# Lancer tous les tests (Python et Swift)
+./Scripts/test.sh
+```
+
+Le script de test exÃ©cute :
+- **Tests unitaires Python** : VÃ©rifie la logique des modÃ¨les IA et des scripts backend.
+- **Tests UI Swift** : Assure que l'interface utilisateur se comporte comme prÃ©vu sur macOS.
+
+Sur un environnement non-macOS, seuls les tests Python seront exÃ©cutÃ©s.
 
 ### **Modules Principaux**
 
