@@ -6,8 +6,6 @@ import os
 from datetime import datetime
 
 # --- Configuration ---
-# Directory to save the generated models. This path is relative to the project root.
-output_dir = "Examples/generated_models"
 # Hugging Face model name for the Shap-E model.
 model_name = "openai/shap-e"
 
@@ -52,7 +50,7 @@ def initialize_pipeline():
         pipe = None
         is_pipe_loaded = False
 
-def generate_3d_model(prompt: str) -> str:
+def generate_3d_model(prompt: str, output_dir: str = "Examples/generated_models") -> str:
     """
     Generates a 3D model from a text prompt using the Shap-E model.
     If the model generation fails, it returns a string containing an error message.
@@ -111,13 +109,15 @@ if __name__ == '__main__':
     # Example: python Python/ai_models/text_to_3d.py
     print("\n--- Running standalone test of text_to_3d.py ---")
     test_prompt = "a robot wearing a cowboy hat"
+    test_output_dir = "Examples/generated_models_test"
     print(f"Test prompt: '{test_prompt}'")
+    print(f"Test output directory: '{test_output_dir}'")
 
-    path = generate_3d_model(test_prompt)
+    path = generate_3d_model(test_prompt, output_dir=test_output_dir)
 
     if path and "Error" not in path:
         print(f"\n✅ Test successful! Model saved at: {path}")
         # Provide instructions for viewing the model
-        print("You can view the generated .ply file using a 3D viewer like MeshLab or Blender.")
+        print(f"You can view the generated .ply file in the '{test_output_dir}' directory using a 3D viewer like MeshLab or Blender.")
     else:
         print(f"\n❌ Test failed. Reason: {path}")
