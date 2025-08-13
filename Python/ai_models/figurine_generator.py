@@ -8,7 +8,6 @@ import os
 from datetime import datetime
 
 # --- Configuration ---
-output_dir = "Examples/generated_figurines"
 model_name = "openai/shap-e"
 
 # --- Global Variables ---
@@ -72,7 +71,7 @@ def _refine_mesh(ply_path: str) -> None:
         print(f"⚠️ [Figurine Generator] Could not refine mesh: {e}")
         # We don't re-raise the error, as refinement is an enhancement, not a critical step.
 
-def generate_figurine(prompt: str, quality: str = "standard") -> str:
+def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = "Examples/generated_figurines") -> str:
     """
     Generates a 3D figurine model from a text prompt.
     - quality 'standard': Faster, good for previews.
@@ -132,12 +131,14 @@ def generate_figurine(prompt: str, quality: str = "standard") -> str:
 
 if __name__ == '__main__':
     print("\n--- Running standalone test of figurine_generator.py ---")
+    test_output_dir = "Examples/generated_figurines_test"
+    print(f"Test output directory: '{test_output_dir}'")
 
     # Test 1: Standard Quality
     test_prompt_standard = "a cute cat figurine"
     print(f"\n[1] Testing Standard Quality...")
     print(f"    Prompt: '{test_prompt_standard}'")
-    path_standard = generate_figurine(test_prompt_standard, quality="standard")
+    path_standard = generate_figurine(test_prompt_standard, quality="standard", output_dir=test_output_dir)
     if "Error" not in path_standard:
         print(f"    ✅ Standard test successful! Model saved at: {path_standard}")
     else:
@@ -147,11 +148,11 @@ if __name__ == '__main__':
     test_prompt_detailed = "an epic knight on a horse, detailed armor"
     print(f"\n[2] Testing Ultra-Detailed Quality...")
     print(f"    Prompt: '{test_prompt_detailed}'")
-    path_detailed = generate_figurine(test_prompt_detailed, quality="ultra_detailed")
+    path_detailed = generate_figurine(test_prompt_detailed, quality="ultra_detailed", output_dir=test_output_dir)
     if "Error" not in path_detailed:
         print(f"    ✅ Ultra-Detailed test successful! Model saved at: {path_detailed}")
     else:
         print(f"    ❌ Ultra-Detailed test failed. Reason: {path_detailed}")
 
     print("\n--- Standalone test finished ---")
-    print("You can view the generated .ply files in the 'Examples/generated_figurines' directory.")
+    print(f"You can view the generated .ply files in the '{test_output_dir}' directory.")
