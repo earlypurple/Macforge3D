@@ -1,25 +1,41 @@
 import os
 import shutil
+import random
 from datetime import datetime
 
 # --- Configuration ---
 output_dir = "Examples/generated_figurines"
-# Path to the placeholder model. This is relative to the project root.
-placeholder_model_path = "MacForge3D/Ressource/Models/placeholder_figurine.ply"
+# Path to the directory containing placeholder models.
+placeholder_dir = "Examples/generated_figurines"
 
 def generate_figurine(prompt: str, quality: str = "standard") -> str:
     """
     (Light Version) Simulates the generation of a 3D figurine.
-    Instead of running a model, it copies a placeholder file to the output directory.
-    This allows for testing the UI and application flow without heavy dependencies.
+    Instead of a real model, it copies a *random* placeholder file to the output dir.
+    This provides variety for UI/flow testing without heavy dependencies.
     """
     print(f"🐍 [Figurine Generator Light] Simulating '{quality}' model for prompt: '{prompt}'...")
 
-    # --- Check if the placeholder file exists ---
-    if not os.path.exists(placeholder_model_path):
-        error_message = f"Error: Placeholder model not found at '{placeholder_model_path}'"
+    # --- Find available placeholder models ---
+    try:
+        available_models = [f for f in os.listdir(placeholder_dir) if f.startswith("placeholder_") and f.endswith(".ply")]
+        if not available_models:
+            raise FileNotFoundError("No placeholder models found in the directory.")
+
+        # --- Select a random placeholder model ---
+        selected_model_name = random.choice(available_models)
+        placeholder_model_path = os.path.join(placeholder_dir, selected_model_name)
+        print(f"🐍 [Figurine Generator Light] Selected random placeholder: {selected_model_name}")
+
+    except FileNotFoundError as e:
+        error_message = f"Error: Placeholder directory not found at '{placeholder_dir}' or it's empty. {e}"
         print(f"❌ {error_message}")
         return error_message
+    except Exception as e:
+        error_message = f"Error scanning for placeholder models: {e}"
+        print(f"❌ {error_message}")
+        return error_message
+
 
     # --- Create output directory ---
     os.makedirs(output_dir, exist_ok=True)
@@ -31,7 +47,7 @@ def generate_figurine(prompt: str, quality: str = "standard") -> str:
     filename = f"{timestamp}_{sanitized_prompt}_{quality}_light.ply"
     output_path = os.path.join(output_dir, filename)
 
-    # --- Copy the placeholder file ---
+    # --- Copy the selected random placeholder file ---
     try:
         shutil.copy(placeholder_model_path, output_path)
         print(f"✅ [Figurine Generator Light] Placeholder model copied successfully to: {output_path}")
