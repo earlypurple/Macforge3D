@@ -3,8 +3,18 @@ import SwiftUI
 struct FigurineGeneratorView: View {
     // Enum for quality options to ensure type safety
     enum Quality: String, CaseIterable, Identifiable {
-        case standard = "Standard"
-        case ultraDetailed = "ultra_detailed"
+        case standard = "standard"
+        case detailed = "detailed"
+        case ultraRealistic = "ultra_realistic"
+
+        var displayName: String {
+            switch self {
+            case .standard: return "Standard"
+            case .detailed: return "Detailed"
+            case .ultraRealistic: return "Ultra-Realistic"
+            }
+        }
+
         var id: Self { self }
     }
 
@@ -12,7 +22,7 @@ struct FigurineGeneratorView: View {
     @State private var prompt: String = "a majestic lion"
 
     // State for the selected quality level
-    @State private var selectedQuality: Quality = .standard
+    @State private var selectedQuality: Quality = .detailed
 
     // State to manage the generation process
     @State private var isGenerating: Bool = false
@@ -35,11 +45,11 @@ struct FigurineGeneratorView: View {
             Section(header: Text("Quality Level").font(.headline)) {
                 Picker("Quality", selection: $selectedQuality) {
                     ForEach(Quality.allCases) { quality in
-                        Text(quality.rawValue.capitalized).tag(quality)
+                        Text(quality.displayName).tag(quality)
                     }
                 }
                 .pickerStyle(SegmentedPickerStyle())
-                .help("Ultra-detailed takes longer but produces a higher quality mesh.")
+                .help("Detailed offers better quality than Standard. Ultra-Realistic uses a more advanced model for the best results but is significantly slower.")
             }
 
             Section {

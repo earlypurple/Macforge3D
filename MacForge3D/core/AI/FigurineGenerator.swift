@@ -16,9 +16,9 @@ class FigurineGenerator {
         // Offload the Python call to a background thread to keep the UI responsive.
         return await Task.detached(priority: .userInitiated) {
             do {
-                // --- Using the LIGHT version of the script for testing ---
-                print("🐍 Importing 'figurine_generator_light' Python module...")
-                let figurineModule = Python.import("figurine_generator_light")
+                // --- Using the FULL version of the script ---
+                print("🐍 Importing 'figurine_generator' Python module...")
+                let figurineModule = Python.import("figurine_generator")
                 print("🐍 Calling 'generate_figurine' with prompt: '\(prompt)' and quality: '\(quality)'")
 
                 // Call the Python function with both parameters.
