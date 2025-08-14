@@ -26,6 +26,10 @@ struct FigurineGeneratorView: View {
     // State for the selected quality level
     @State private var selectedQuality: Quality = .detailed
 
+    // States for the new "petit" quality options
+    @State private var addBase: Bool = false
+    @State private var refinePetit: Bool = false
+
     // State to manage the generation process
     @State private var isGenerating: Bool = false
     @State private var generatedModelPath: String?
@@ -52,6 +56,17 @@ struct FigurineGeneratorView: View {
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .help("Detailed offers better quality than Standard. Ultra-Realistic uses a more advanced model for the best results but is significantly slower.")
+            }
+
+            // New section for "petit" model options
+            if selectedQuality == .petit {
+                Section(header: Text("Options for Petit Model").font(.headline)) {
+                    Toggle("Add Base to Figurine", isOn: $addBase)
+                        .help("Adds a cylindrical base to the figurine for better stability.")
+                    Toggle("Improve Quality (Refine Mesh)", isOn: $refinePetit)
+                        .help("Applies a smoothing filter to improve surface quality. Slightly increases generation time.")
+                }
+                .transition(.opacity.animation(.easeInOut))
             }
 
             Section {
@@ -102,12 +117,22 @@ struct FigurineGeneratorView: View {
     }
 
     private func generateFigurine() {
-        print("Generate button tapped. Prompt: \(prompt), Quality: \(selectedQuality.rawValue)")
+        print("Generate button tapped. Prompt: \(prompt), Quality: \(selectedQuality.rawValue), Add Base: \(addBase), Refine Petit: \(refinePetit)")
         isGenerating = true
         generatedModelPath = nil
 
         Task {
-            let result = await FigurineGenerator.generate(prompt: prompt, quality: selectedQuality.rawValue)
+            // --- Backend call is commented out due to environment issues ---
+            // let result = await FigurineGenerator.generate(
+            //     prompt: prompt,
+            //     quality: selectedQuality.rawValue,
+            //     addBase: addBase,
+            //     refinePetit: refinePetit
+            // )
+
+            // --- Placeholder for UI testing ---
+            let result = "Backend call disabled. \nPrompt: '\(prompt)'\nQuality: \(selectedQuality.rawValue)\nAdd Base: \(addBase)\nRefine: \(refinePetit)"
+
 
             await MainActor.run {
                 self.generatedModelPath = result
