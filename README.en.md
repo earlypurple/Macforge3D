@@ -25,7 +25,7 @@ MacForge3D revolutionizes 3D creation by combining advanced artificial intellige
 - **Adaptive Learning**: Improves its suggestions based on your preferences.
 
 ### 🎨 **Professional Modeling**
-- **Parametric Shapes**: Cube, sphere, cylinder, torus, N-gon prisms.
+- **Parametric Shapes**: Cube, Sphere, Cylinder, Cone.
 - **Generative Design**: Topological optimization with physical constraints.
 - **3D Engraving**: TrueType text integration with variable depth.
 - **Organic Sculpting**: Biomimetic shapes and NURBS surfaces.

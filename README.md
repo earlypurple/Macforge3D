@@ -26,7 +26,7 @@ MacForge3D rÃ©volutionne la crÃ©ation 3D en combinant l'intelligence artific
 - **Apprentissage Adaptatif** : AmÃ©liore ses propositions selon vos prÃ©fÃ©rences
 
 ### ðŸŽ¨ **ModÃ©lisation Professionnelle**
-- **Formes ParamÃ©triques** : Cube, sphÃ¨re, cylindre, tore, prismes N-gonaux
+- **Formes Paramétriques** : Cube, sphère, cylindre, cône
 - **Design GÃ©nÃ©ratif** : Optimisation topologique avec contraintes physiques
 - **Gravure 3D** : IntÃ©gration texte TrueType avec profondeur variable
 - **Sculpture Organique** : Formes biomimÃ©tiques et surfaces NURBS
@@ -312,7 +312,7 @@ MIT License
 
 Copyright (c) 2025 MacForge3D Team
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
+Permission is hereby granted, free of charge, to a person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
