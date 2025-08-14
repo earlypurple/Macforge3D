@@ -45,24 +45,48 @@ def test_generate_figurine_light():
         os.remove(output_path)
         print(f"🧹 Cleaned up {output_path}")
 
+def test_generate_figurine_petit(cleanup_generated_files):
+    """
+    Tests the 'petit' quality setting for the light generator.
+    It should create a new .ply file and the filename should reflect the quality.
+    """
+    # --- Arrange ---
+    test_prompt = "a_tiny_dragon"
+    quality = "petit"
+
+    # --- Act ---
+    output_path = generate_figurine(test_prompt, quality=quality)
+    cleanup_generated_files.append(output_path)
+
+    # --- Assert ---
+    assert output_path is not None
+    assert "Error" not in output_path
+    assert os.path.exists(output_path)
+    assert test_prompt in output_path
+    assert f"_{quality}_light.ply" in output_path
+
 def test_generate_figurine_no_placeholder():
     """
     Tests that the generator handles a missing placeholder file gracefully.
     """
     # --- Arrange ---
-    # Move the original placeholder to a temporary location
-    original_path = "MacForge3D/Ressource/Models/placeholder_figurine.ply"
-    temp_path = "MacForge3D/Ressource/Models/placeholder_figurine.ply.bak"
-    if os.path.exists(original_path):
-        os.rename(original_path, temp_path)
+    placeholder_dir = "Examples/generated_figurines"
+    backup_dir = "Examples/generated_figurines_bak"
+    os.makedirs(backup_dir, exist_ok=True)
+
+    # Move all placeholder files to the backup directory
+    placeholders = [f for f in os.listdir(placeholder_dir) if f.endswith(".ply")]
+    for p in placeholders:
+        os.rename(os.path.join(placeholder_dir, p), os.path.join(backup_dir, p))
 
     # --- Act ---
     output_path = generate_figurine("any_prompt")
 
     # --- Assert ---
-    assert "Error: Placeholder model not found" in output_path
+    assert "No placeholder models found" in output_path
 
     # --- Teardown ---
-    # Restore the placeholder
-    if os.path.exists(temp_path):
-        os.rename(temp_path, original_path)
+    # Restore the placeholders
+    for p in placeholders:
+        os.rename(os.path.join(backup_dir, p), os.path.join(placeholder_dir, p))
+    os.rmdir(backup_dir)

@@ -16,19 +16,26 @@ def generate_figurine(prompt: str, quality: str = "standard") -> str:
     """
     print(f"🐍 [Figurine Generator Light] Simulating '{quality}' model for prompt: '{prompt}'...")
 
-    # --- Find available placeholder models ---
+    # --- Select a placeholder model based on quality ---
     try:
-        available_models = [f for f in os.listdir(placeholder_dir) if f.startswith("placeholder_") and f.endswith(".ply")]
-        if not available_models:
-            raise FileNotFoundError("No placeholder models found in the directory.")
+        if quality == "petit":
+            selected_model_name = "placeholder_petit.ply"
+        else:
+            # Fallback to a random available model for other qualities
+            available_models = [f for f in os.listdir(placeholder_dir) if f.startswith("placeholder_") and f.endswith(".ply")]
+            if not available_models:
+                raise FileNotFoundError("No placeholder models found in the directory.")
+            selected_model_name = random.choice(available_models)
 
-        # --- Select a random placeholder model ---
-        selected_model_name = random.choice(available_models)
         placeholder_model_path = os.path.join(placeholder_dir, selected_model_name)
-        print(f"🐍 [Figurine Generator Light] Selected random placeholder: {selected_model_name}")
+
+        if not os.path.exists(placeholder_model_path):
+            raise FileNotFoundError(f"Selected placeholder model '{selected_model_name}' not found.")
+
+        print(f"🐍 [Figurine Generator Light] Selected placeholder: {selected_model_name}")
 
     except FileNotFoundError as e:
-        error_message = f"Error: Placeholder directory not found at '{placeholder_dir}' or it's empty. {e}"
+        error_message = f"Error: {e}"
         print(f"❌ {error_message}")
         return error_message
     except Exception as e:
