@@ -3,12 +3,14 @@ import SwiftUI
 struct FigurineGeneratorView: View {
     // Enum for quality options to ensure type safety
     enum Quality: String, CaseIterable, Identifiable {
+        case petit = "petit"
         case standard = "standard"
         case detailed = "detailed"
         case ultraRealistic = "ultra_realistic"
 
         var displayName: String {
             switch self {
+            case .petit: return "Petit (<= 25mm)"
             case .standard: return "Standard"
             case .detailed: return "Detailed"
             case .ultraRealistic: return "Ultra-Realistic"

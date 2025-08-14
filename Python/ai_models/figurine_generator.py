@@ -85,9 +85,40 @@ def _refine_mesh(ply_path: str, iterations: int = 1, alpha: float = 0.1, beta: f
     except Exception as e:
         print(f"⚠️ [Figurine Generator] Could not refine mesh: {e}")
 
+def _scale_mesh(ply_path: str, max_dimension_mm: float):
+    """
+    Scales a mesh to a maximum bounding box dimension.
+
+    :param ply_path: Path to the PLY file.
+    :param max_dimension_mm: The maximum size for the largest dimension in millimeters.
+    """
+    try:
+        print(f"🐍 [Figurine Generator] Scaling mesh at {ply_path} to max {max_dimension_mm}mm...")
+        mesh = trimesh.load(ply_path)
+
+        # Get the current bounding box size
+        current_max_dimension = np.max(mesh.extents)
+
+        if current_max_dimension == 0:
+            print("⚠️ [Figurine Generator] Cannot scale mesh with zero size.")
+            return
+
+        # Calculate the scaling factor
+        scale_factor = max_dimension_mm / current_max_dimension
+
+        # Apply the scaling transformation
+        mesh.apply_scale(scale_factor)
+
+        # Overwrite the original file with the scaled mesh
+        mesh.export(ply_path)
+        print(f"✅ [Figurine Generator] Mesh scaled successfully. New max dimension is approx {max_dimension_mm}mm.")
+    except Exception as e:
+        print(f"⚠️ [Figurine Generator] Could not scale mesh: {e}")
+
 def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = "Examples/generated_figurines") -> str:
     """
     Generates a 3D figurine model from a text prompt using different pipelines based on quality.
+    - quality 'petit': Shap-E, fast preview, scaled to 25mm.
     - quality 'standard': Shap-E, fast preview.
     - quality 'detailed': Shap-E, higher quality.
     - quality 'ultra_realistic': TripoSR, highest quality.
@@ -116,13 +147,15 @@ def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = 
             # Apply more aggressive refinement for TripoSR
             _refine_mesh(output_path, iterations=2, alpha=0.05, beta=0.2)
 
-        else: # 'standard' or 'detailed'
+        else:  # 'petit', 'standard', or 'detailed'
             if not pipe_shap_e:
                 return "Error: Shap-E pipeline is not available. Check logs for details."
 
             if quality == "detailed":
                 inference_steps, frame_size = 128, 512
-            else: # standard
+            elif quality == "petit":
+                inference_steps, frame_size = 32, 128  # Faster settings for small models
+            else:  # standard
                 inference_steps, frame_size = 64, 256
 
             print(f"🔷 [Shap-E] Generating with {inference_steps} steps...")
@@ -137,6 +170,9 @@ def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = 
 
             if quality == "detailed":
                 _refine_mesh(output_path)
+
+            if quality == "petit":
+                _scale_mesh(output_path, max_dimension_mm=25.0)
 
         print(f"✅ [Figurine Generator] Model saved successfully to: {output_path}")
         return output_path
