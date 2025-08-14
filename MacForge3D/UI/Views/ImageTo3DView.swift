@@ -2,11 +2,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ImageTo3DView: View {
-    // State for the path of the selected image.
-    @State private var selectedImagePath: String?
+    // State for the paths of the selected images.
+    @State private var selectedImagePaths: [String] = []
 
-    // State for the NSImage to display a preview.
-    @State private var selectedImage: NSImage?
+    // State for the NSImages to display previews.
+    @State private var selectedImages: [NSImage] = []
 
     // State for the selected model color.
     @State private var modelColor: Color = .blue
@@ -23,39 +23,52 @@ struct ImageTo3DView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("Input Image").font(.headline)) {
+            Section(header: Text("Input Images for Photogrammetry").font(.headline)) {
                 VStack(alignment: .center, spacing: 16) {
-                    if let image = selectedImage {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(height: 250)
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.gray.opacity(0.4), lineWidth: 1)
-                            )
+                    if !selectedImages.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: true) {
+                            HStack(spacing: 10) {
+                                ForEach(selectedImages, id: \.self) { image in
+                                    Image(nsImage: image)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(height: 150)
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+                                        )
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        .frame(height: 160)
                     } else {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10)
                                 .fill(Color(NSColor.windowBackgroundColor))
-                                .frame(height: 250)
+                                .frame(height: 150)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
                                         .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
                                         .foregroundColor(.gray.opacity(0.5))
                                 )
 
-                            Text("Select an image to begin")
-                                .font(.title2)
-                                .foregroundColor(.secondary)
+                            VStack {
+                                Text("Select multiple images of an object from different angles.")
+                                    .font(.title2)
+                                    .foregroundColor(.secondary)
+                                Text("(Minimum 5 images recommended)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
 
-                    Button(action: selectImage) {
+                    Button(action: selectImages) {
                         HStack {
                             Image(systemName: "photo.on.rectangle.angled")
-                            Text(selectedImage == nil ? "Choose Image..." : "Change Image...")
+                            Text(selectedImages.isEmpty ? "Choose Images..." : "Choose More Images...")
                         }
                     }
                     .padding(.horizontal)
@@ -73,11 +86,11 @@ struct ImageTo3DView: View {
                 Button(action: triggerGeneration) {
                     HStack {
                         Image(systemName: "sparkles")
-                        Text("Generate Model")
+                        Text("Generate Photogrammetry Model")
                     }
                     .font(.title3)
                 }
-                .disabled(selectedImagePath == nil || isGenerating)
+                .disabled(selectedImagePaths.isEmpty || isGenerating)
                 .controlSize(.large)
                 Spacer()
             }
@@ -89,7 +102,7 @@ struct ImageTo3DView: View {
                     Spacer()
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle())
-                    Text("Generating model...")
+                    Text("Generating model from images...")
                         .foregroundColor(.secondary)
                     Spacer()
                 }
@@ -108,32 +121,37 @@ struct ImageTo3DView: View {
             }
         }
         .padding()
-        .navigationTitle("Image to 3D")
+        .navigationTitle("Image to 3D (Photogrammetry)")
         .alert(isPresented: $showAlert) {
             Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }
     }
 
-    private func selectImage() {
+    private func selectImages() {
         let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true // Allow multiple files to be selected
         panel.canChooseDirectories = false
-        // Allow common image file types
         panel.allowedContentTypes = [UTType.png, UTType.jpeg, UTType.bmp, UTType.tiff]
 
         if panel.runModal() == .OK {
-            if let url = panel.url {
-                self.selectedImagePath = url.path
-                self.selectedImage = NSImage(contentsOf: url)
-                // Reset previous generation
-                self.generatedModelPath = nil
+            // Clear previous selections
+            self.selectedImagePaths = []
+            self.selectedImages = []
+
+            for url in panel.urls {
+                if let image = NSImage(contentsOf: url) {
+                    self.selectedImagePaths.append(url.path)
+                    self.selectedImages.append(image)
+                }
             }
+            // Reset previous generation
+            self.generatedModelPath = nil
         }
     }
 
     private func triggerGeneration() {
-        guard let imagePath = selectedImagePath else {
-            alertMessage = "Please select an image first."
+        guard !selectedImagePaths.isEmpty else {
+            alertMessage = "Please select at least one image."
             showAlert = true
             return
         }
@@ -142,10 +160,9 @@ struct ImageTo3DView: View {
         generatedModelPath = nil
 
         Task {
-            print("Starting generation for image: \(imagePath)")
-            // We need to create ImageTo3DGenerator first.
-            // For now, let's assume it exists.
-            let result = await ImageTo3DGenerator.generate(imagePath: imagePath)
+            print("Starting photogrammetry generation for \(selectedImagePaths.count) images.")
+            // The generate function will be updated to handle multiple paths
+            let result = await ImageTo3DGenerator.generate(imagePaths: selectedImagePaths)
 
             await MainActor.run {
                 if let path = result, !path.starts(with: "Error:") {
