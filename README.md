@@ -76,6 +76,19 @@ MacForge3D rÃ©volutionne la crÃ©ation 3D en combinant l'intelligence artific
 - **RAM** 8 GB minimum, 16 GB recommandÃ©
 - **Stockage** 5 GB d'espace libre
 
+#### **DÃ©pendances SupplÃ©mentaires pour la PhotogrammÃ©trie**
+La nouvelle fonctionnalitÃ© de photogrammÃ©trie (Image â†’ 3D) nÃ©cessite l'installation de **Meshroom**.
+
+- **Stockage supplÃ©mentaire :** PrÃ©voyez environ **2 Go** d'espace disque pour l'application Meshroom.
+- **Installation (macOS) :**
+  ```bash
+  brew install meshroom
+  ```
+- **Installation (Linux) :**
+  1. TÃ©lÃ©chargez la derniÃ¨re version binaire depuis la [page de publication de Meshroom](https://github.com/alicevision/meshroom/releases).
+  2. Extrayez l'archive.
+  3. Ajoutez le sous-dossier `aliceVision/bin` de l'archive extraite Ã  votre `PATH` systÃ¨me pour que la commande `meshroom_batch` soit accessible.
+
 ### Installation AutomatisÃ©e
 
 ```bash
