@@ -15,7 +15,8 @@ class TextTo3DGenerator {
         return await Task.detached(priority: .userInitiated) {
             do {
                 print("🐍 Importing 'text_to_3d' Python module...")
-                let textTo3DModule = Python.import("text_to_3d")
+                // Note: The import path is now relative to the 'Python' directory.
+                let textTo3DModule = Python.import("ai_models.text_to_3d")
                 print("🐍 Calling 'generate_3d_model' function with prompt: '\(prompt)'")
 
                 let result = textTo3DModule.generate_3d_model(prompt)
