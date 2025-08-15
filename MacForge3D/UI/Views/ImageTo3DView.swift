@@ -21,6 +21,10 @@ struct ImageTo3DView: View {
     @State private var showAlert: Bool = false
     @State private var alertMessage: String = ""
 
+    // States for post-processing options
+    @State private var shouldRepairMesh: Bool = true
+    @State private var targetSize: String = "100"
+
     var body: some View {
         Form {
             Section(header: Text("Input Images for Photogrammetry").font(.headline)) {
@@ -79,6 +83,27 @@ struct ImageTo3DView: View {
             Section(header: Text("Customization").font(.headline)) {
                 ColorPicker("Model Color", selection: $modelColor)
             }
+
+            Section(header: Text("Post-Processing Options").font(.headline)) {
+                Toggle("Make Printable (Repair Mesh)", isOn: $shouldRepairMesh)
+                    .help("Automatically repairs the mesh to make it watertight and suitable for 3D printing. Highly recommended.")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Target Size (mm)")
+                        Spacer()
+                        TextField("e.g., 100", text: $targetSize)
+                           .frame(maxWidth: 120)
+                           .multilineTextAlignment(.trailing)
+                           .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+                    Text("The model will be scaled uniformly to match this size on its longest side. Set to 0 to disable.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
 
             // Generate Button
             HStack {
@@ -159,10 +184,20 @@ struct ImageTo3DView: View {
         isGenerating = true
         generatedModelPath = nil
 
+        // Prepare parameters for the generation task
+        let shouldRepair = shouldRepairMesh
+        let size = Float(targetSize) ?? 0.0
+
         Task {
             print("Starting photogrammetry generation for \(selectedImagePaths.count) images.")
+            print("Post-processing options: Repair=\(shouldRepair), TargetSize=\(size)mm")
+
             // The generate function will be updated to handle multiple paths
-            let result = await ImageTo3DGenerator.generate(imagePaths: selectedImagePaths)
+            let result = await ImageTo3DGenerator.generate(
+                imagePaths: selectedImagePaths,
+                repairMesh: shouldRepair,
+                targetSize: size
+            )
 
             await MainActor.run {
                 if let path = result, !path.starts(with: "Error:") {
