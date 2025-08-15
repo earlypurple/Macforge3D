@@ -32,6 +32,31 @@ class AppController: ObservableObject {
         _ = modelExporter.export(model: model, to: url, format: format)
     }
 
+    func exportCurrentSceneToData(format: ModelFormat) -> Data? {
+        guard let model = sceneManager.currentScene() else { return nil }
+
+        // Create a temporary file URL
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+
+        // Export the model to the temporary file
+        let success = modelExporter.export(model: model, to: tempURL, format: format)
+
+        if success {
+            do {
+                // Read the data from the temporary file
+                let data = try Data(contentsOf: tempURL)
+                // Clean up the temporary file
+                try? FileManager.default.removeItem(at: tempURL)
+                return data
+            } catch {
+                print("Error reading exported file: \(error)")
+                return nil
+            }
+        } else {
+            return nil
+        }
+    }
+
     // Exemple : activer un plugin
     func activatePlugin(named name: String) {
         pluginManager.activate(pluginNamed: name)
