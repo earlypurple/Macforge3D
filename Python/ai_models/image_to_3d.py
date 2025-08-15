@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 def generate_3d_model_from_images(
     image_paths: list,
     output_dir: str = "Examples/generated_photogrammetry",
+    quality: str = "Default",
     should_repair: bool = True,
     target_size_mm: float = 0.0
 ) -> str:
@@ -18,6 +19,7 @@ def generate_3d_model_from_images(
     Args:
         image_paths: A list of absolute paths to the input images.
         output_dir: The base directory where the final model and its assets will be saved.
+        quality: The desired quality level ("Draft", "Default", "High").
         should_repair: Boolean flag to enable/disable mesh repair.
         target_size_mm: The target size in mm for the model's longest dimension.
 
@@ -25,8 +27,7 @@ def generate_3d_model_from_images(
         A string containing the path to the generated model file, or an error message.
     """
     print(f"🐍 Bridge script 'image_to_3d.py' received request for {len(image_paths)} images.")
-    print(f"🐍 Options: Repair={should_repair}, Target Size={target_size_mm}mm")
-
+    print(f"🐍 Options: Quality='{quality}', Repair={should_repair}, Target Size={target_size_mm}mm")
 
     if not isinstance(image_paths, list) or not image_paths:
         return "Error: Input must be a list of image paths."
@@ -35,6 +36,7 @@ def generate_3d_model_from_images(
     result = run_photogrammetry(
         image_paths,
         output_base_dir=output_dir,
+        quality=quality,
         should_repair=should_repair,
         target_size_mm=target_size_mm
     )
@@ -71,30 +73,32 @@ if __name__ == '__main__':
     else:
         print(f"Found/created {len(test_images)} test images for bridge test.")
 
-        # Call the main function of this script with post-processing enabled
-        print("\n--- Testing with post-processing ---")
+        # Call the main function of this script with a specific quality
+        print("\n--- Testing with 'Draft' quality ---")
         path = generate_3d_model_from_images(
             test_images,
+            quality="Draft",
             should_repair=True,
             target_size_mm=150.0
         )
 
         if path and "Error" not in path:
-            print(f"\n✅ Bridge test with post-processing successful! Model saved at: {path}")
+            print(f"\n✅ Bridge test with 'Draft' quality successful! Model saved at: {path}")
         else:
-            print(f"\n❌ Bridge test with post-processing failed. Reason: {path}")
-            print("Please ensure Meshroom is installed and 'meshroom_batch' is in your PATH.")
+            print(f"\n❌ Bridge test with 'Draft' quality failed. Reason: {path}")
+            print("   Please ensure Meshroom is installed and 'meshroom_batch' is in your PATH.")
 
-        # Call the main function of this script with post-processing disabled
-        print("\n--- Testing without post-processing ---")
+        # Call the main function of this script with default quality
+        print("\n--- Testing with 'Default' quality and no post-processing ---")
         path_no_pp = generate_3d_model_from_images(
             test_images,
+            quality="Default",
             should_repair=False,
             target_size_mm=0
         )
 
         if path_no_pp and "Error" not in path_no_pp:
-            print(f"\n✅ Bridge test without post-processing successful! Model saved at: {path_no_pp}")
+            print(f"\n✅ Bridge test with 'Default' quality successful! Model saved at: {path_no_pp}")
         else:
-            print(f"\n❌ Bridge test without post-processing failed. Reason: {path_no_pp}")
-            print("Please ensure Meshroom is installed and 'meshroom_batch' is in your PATH.")
+            print(f"\n❌ Bridge test with 'Default' quality failed. Reason: {path_no_pp}")
+            print("   Please ensure Meshroom is installed and 'meshroom_batch' is in your PATH.")
