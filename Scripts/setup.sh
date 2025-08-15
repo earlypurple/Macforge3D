@@ -64,9 +64,9 @@ echo "✅ Homebrew setup complete."
 
 
 # --- 4. Install System Dependencies ---
-echo "› Installing system dependencies (Python 3.11, Git LFS, libsndfile, SwiftLint)..."
+echo "› Installing system dependencies (Python 3.11, Git LFS, libsndfile, SwiftLint, GCC)..."
 # SwiftLint is only installed on macOS, but brew will handle this gracefully.
-brew install python@3.11 git-lfs libsndfile swiftlint
+brew install python@3.11 git-lfs libsndfile swiftlint gcc
 echo "✅ System dependencies installed."
 
 
