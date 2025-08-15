@@ -20,6 +20,7 @@ MacForge3D rÃ©volutionne la crÃ©ation 3D en combinant l'intelligence artific
 ## ðŸŒŸ FonctionnalitÃ©s RÃ©volutionnaires
 
 ### ðŸ¤– **Intelligence Artificielle GÃ©nÃ©rative**
+- **Image-to-3D par Photogrammétrie** : Créez des modèles 3D à partir de photos
 - **Text-to-3D AvancÃ©** : Transformez vos descriptions en modÃ¨les 3D dÃ©taillÃ©s
 - **Audio-to-3D Innovant** : Convertissez musique et sons en formes organiques
 - **Suggestions IA** : Assistant intelligent pour optimiser vos crÃ©ations
@@ -313,7 +314,6 @@ R: Non, tout fonctionne en local aprÃ¨s l'installation initiale.
 - [ ] Impression multi-matÃ©riaux
 
 ### **Version 2.0** (Q4 2025) ðŸš€  
-- [ ] Image-to-3D photogrammÃ©trie
 - [ ] Animation 3D intÃ©grÃ©e
 - [ ] Marketplace de modÃ¨les
 - [ ] IA gÃ©nÃ©rative avancÃ©e
