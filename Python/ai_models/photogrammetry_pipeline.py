@@ -5,6 +5,7 @@ import shutil
 from datetime import datetime
 from .mesh_processor import repair_mesh, scale_mesh
 
+
 def find_generated_model(output_dir):
     """Finds the most likely final model file from the Meshroom output."""
     # Meshroom typically outputs the final textured mesh here.
@@ -14,7 +15,9 @@ def find_generated_model(output_dir):
         print(f"❌ Texturing output directory not found: {mesh_dir}")
         return None
 
-    potential_dirs = [d for d in os.listdir(mesh_dir) if os.path.isdir(os.path.join(mesh_dir, d))]
+    potential_dirs = [
+        d for d in os.listdir(mesh_dir) if os.path.isdir(os.path.join(mesh_dir, d))
+    ]
     if not potential_dirs:
         print(f"❌ No subdirectories found in Texturing cache: {mesh_dir}")
         return None
@@ -29,6 +32,7 @@ def find_generated_model(output_dir):
     print(f"❌ No .obj file found in the output directory: {texture_folder}")
     return None
 
+
 def parse_meshroom_error(log: str) -> str:
     """
     Parses the Meshroom log to find common, user-friendly error messages.
@@ -42,14 +46,15 @@ def parse_meshroom_error(log: str) -> str:
         for line in log.splitlines():
             if "FATAL" in line:
                 return f"Error: A critical error occurred in Meshroom: {line}"
-    return "" # Return empty if no specific error is found
+    return ""  # Return empty if no specific error is found
+
 
 def run_photogrammetry(
     image_paths: list,
     output_base_dir: str = "Examples/generated_photogrammetry",
     quality: str = "Default",
     should_repair: bool = True,
-    target_size_mm: float = 0.0
+    target_size_mm: float = 0.0,
 ) -> str:
     """
     Runs the Meshroom photogrammetry pipeline and optionally processes the output.
@@ -68,11 +73,7 @@ def run_photogrammetry(
         return "Error: No image paths provided."
 
     # --- Map quality setting to --scale parameter ---
-    quality_map = {
-        "Draft": "4",
-        "Default": "2",
-        "High": "1"
-    }
+    quality_map = {"Draft": "4", "Default": "2", "High": "1"}
     scale_factor = quality_map.get(quality, "2")
     print(f"🐍 Quality set to '{quality}'. Using scale factor: {scale_factor}")
 
@@ -85,10 +86,14 @@ def run_photogrammetry(
 
         command = [
             "meshroom_batch",
-            "--input", *image_paths,
-            "--output", run_output_dir,
-            "--cache", temp_cache_dir,
-            "--scale", scale_factor
+            "--input",
+            *image_paths,
+            "--output",
+            run_output_dir,
+            "--cache",
+            temp_cache_dir,
+            "--scale",
+            scale_factor,
         ]
 
         print(f"🐍 Executing command: {' '.join(command)}")
@@ -98,7 +103,7 @@ def run_photogrammetry(
                 command,
                 capture_output=True,
                 text=True,
-                check=False # Do not raise exception on non-zero exit codes
+                check=False,  # Do not raise exception on non-zero exit codes
             )
 
             # Print stdout and stderr for debugging purposes
@@ -129,12 +134,16 @@ def run_photogrammetry(
             for file in os.listdir(model_dir):
                 shutil.copy(os.path.join(model_dir, file), run_output_dir)
 
-            current_path = os.path.join(run_output_dir, os.path.basename(raw_model_path))
+            current_path = os.path.join(
+                run_output_dir, os.path.basename(raw_model_path)
+            )
             print(f"✅ Raw model and assets copied to: {run_output_dir}")
 
             if should_repair:
                 base_name = os.path.splitext(os.path.basename(current_path))[0]
-                repaired_path = os.path.join(run_output_dir, f"{base_name}_repaired.obj")
+                repaired_path = os.path.join(
+                    run_output_dir, f"{base_name}_repaired.obj"
+                )
                 if repair_mesh(current_path, repaired_path):
                     current_path = repaired_path
                 else:
@@ -149,9 +158,9 @@ def run_photogrammetry(
                 print("⚠️  Mesh scaling failed. Saving the unscaled version.")
                 if current_path != final_path:
                     shutil.move(current_path, final_path)
-                    mtl_src = current_path.replace('.obj', '.mtl')
+                    mtl_src = current_path.replace(".obj", ".mtl")
                     if os.path.exists(mtl_src):
-                        shutil.move(mtl_src, final_path.replace('.obj', '.mtl'))
+                        shutil.move(mtl_src, final_path.replace(".obj", ".mtl"))
                 current_path = final_path
 
             print(f"✅ Post-processing complete. Final model is at: {current_path}")
@@ -166,7 +175,8 @@ def run_photogrammetry(
             print(f"❌ {error_message}")
             return error_message
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("\n--- Running standalone test of photogrammetry_pipeline.py ---")
 
     test_image_dir = "Examples/photogrammetry_test_images"
@@ -178,7 +188,8 @@ if __name__ == '__main__':
         path = os.path.join(test_image_dir, f"test_image_{i}.png")
         if not os.path.exists(path):
             from PIL import Image, ImageDraw
-            img = Image.new('RGB', (200, 200), color = (73, 109, 137))
+
+            img = Image.new("RGB", (200, 200), color=(73, 109, 137))
             d = ImageDraw.Draw(img)
             d.text((50, 50), f"Image {i+1}", fill=(255, 255, 0))
             img.save(path)
@@ -191,19 +202,27 @@ if __name__ == '__main__':
 
         # --- Test with different quality settings ---
         for quality_level in ["Draft", "Default", "High"]:
-            print(f"\n--- Testing photogrammetry pipeline with '{quality_level}' quality ---")
+            print(
+                f"\n--- Testing photogrammetry pipeline with '{quality_level}' quality ---"
+            )
             result_path = run_photogrammetry(
                 test_images,
                 quality=quality_level,
                 should_repair=True,
-                target_size_mm=100.0
+                target_size_mm=100.0,
             )
 
             if result_path and "Error" not in result_path:
-                print(f"\n✅ '{quality_level}' quality test successful! Model saved at: {result_path}")
+                print(
+                    f"\n✅ '{quality_level}' quality test successful! Model saved at: {result_path}"
+                )
                 # Clean up the generated directory for the next run
                 # shutil.rmtree(os.path.dirname(result_path))
             else:
-                print(f"\n❌ '{quality_level}' quality test failed. Reason: {result_path}")
-                print("    Please ensure Meshroom is installed and 'meshroom_batch' is in your PATH.")
-                break # Stop testing if one level fails
+                print(
+                    f"\n❌ '{quality_level}' quality test failed. Reason: {result_path}"
+                )
+                print(
+                    "    Please ensure Meshroom is installed and 'meshroom_batch' is in your PATH."
+                )
+                break  # Stop testing if one level fails

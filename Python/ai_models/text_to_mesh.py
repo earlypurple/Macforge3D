@@ -1,17 +1,24 @@
 import trimesh
 import numpy as np
 import os
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon  # type: ignore
 
-def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0, depth: float = 5.0, output_path: str = '/tmp/3d_text.ply'):
+
+def create_text_mesh(
+    text: str,
+    font: str = "Arial.ttf",
+    font_size: float = 24.0,
+    depth: float = 5.0,
+    output_path: str = "/tmp/3d_text.ply",
+):
     """
     Generates a 3D mesh from a given text string using font vector outlines.
     This approach uses fontTools to get high-quality vector paths for glyphs.
     """
     try:
-        from fontTools.ttLib import TTFont
-        from fontTools.pens.basePen import BasePen
-        from shapely.geometry import Polygon, MultiPolygon
+        from fontTools.ttLib import TTFont  # type: ignore
+        from fontTools.pens.basePen import BasePen  # type: ignore
+        from shapely.geometry import Polygon, MultiPolygon  # type: ignore
     except ImportError:
         return "Error: fontTools or shapely is not installed. Please run 'pip install fonttools shapely'."
 
@@ -35,8 +42,18 @@ def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0
             steps = 10
             for i in range(1, steps + 1):
                 t = i / steps
-                x = (1-t)**3 * self.current_contour[-1][0] + 3*(1-t)**2*t * pt1[0] + 3*(1-t)*t**2 * pt2[0] + t**3 * pt3[0]
-                y = (1-t)**3 * self.current_contour[-1][1] + 3*(1-t)**2*t * pt1[1] + 3*(1-t)*t**2 * pt2[1] + t**3 * pt3[1]
+                x = (
+                    (1 - t) ** 3 * self.current_contour[-1][0]
+                    + 3 * (1 - t) ** 2 * t * pt1[0]
+                    + 3 * (1 - t) * t**2 * pt2[0]
+                    + t**3 * pt3[0]
+                )
+                y = (
+                    (1 - t) ** 3 * self.current_contour[-1][1]
+                    + 3 * (1 - t) ** 2 * t * pt1[1]
+                    + 3 * (1 - t) * t**2 * pt2[1]
+                    + t**3 * pt3[1]
+                )
                 self.current_contour.append((x, y))
 
         def _closePath(self):
@@ -54,7 +71,11 @@ def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0
     try:
         font_path = font
         if not os.path.exists(font_path):
-            font_dirs = ['/System/Library/Fonts/Supplemental', '/usr/share/fonts/truetype/msttcorefonts', '/usr/share/fonts/dejavu']
+            font_dirs = [
+                "/System/Library/Fonts/Supplemental",
+                "/usr/share/fonts/truetype/msttcorefonts",
+                "/usr/share/fonts/dejavu",
+            ]
             for dir_path in font_dirs:
                 path_to_try = os.path.join(dir_path, font)
                 if os.path.exists(path_to_try):
@@ -70,13 +91,13 @@ def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0
     cursor_x = 0
 
     # Scale factor to convert font units to model units
-    units_per_em = font_obj['head'].unitsPerEm
+    units_per_em = font_obj["head"].unitsPerEm
     scale = font_size / units_per_em
 
     for char in text:
         glyph_name = font_obj.getBestCmap().get(ord(char))
         if not glyph_name:
-            cursor_x += font_obj['hmtx']['a'][0] * scale # Advance by a default width
+            cursor_x += font_obj["hmtx"]["a"][0] * scale  # Advance by a default width
             continue
 
         glyph = glyphSet[glyph_name]
@@ -96,7 +117,7 @@ def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0
 
         final_polygon = MultiPolygon(outer_polygons)
         for inner in inner_polygons:
-             final_polygon = final_polygon.difference(inner)
+            final_polygon = final_polygon.difference(inner)
 
         if final_polygon.is_empty:
             cursor_x += glyph.width * scale
@@ -104,12 +125,9 @@ def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0
 
         # Extrude and transform the character mesh
         char_mesh = trimesh.creation.extrude_polygon(final_polygon, height=depth)
-        transform = np.array([
-            [1, 0, 0, cursor_x],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
+        transform = np.array(
+            [[1, 0, 0, cursor_x], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        )
         char_mesh.apply_transform(transform)
         char_mesh.apply_scale(scale)
 
@@ -124,13 +142,14 @@ def create_text_mesh(text: str, font: str = 'Arial.ttf', font_size: float = 24.0
     total_mesh.export(output_path)
     return output_path
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("Testing text_to_mesh.py script with fontTools...")
     path_or_error = create_text_mesh(
         text="Vector!",
-        font="DejaVuSans.ttf", # A common font on Linux systems
+        font="DejaVuSans.ttf",  # A common font on Linux systems
         font_size=72,
         depth=10,
-        output_path="/tmp/vector_text.ply"
+        output_path="/tmp/vector_text.ply",
     )
     print(f"Script finished. Result: {path_or_error}")

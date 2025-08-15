@@ -1,10 +1,15 @@
 import torch
-from diffusers import ShapEPipeline, TripoSRPipeline
+from diffusers import ShapEPipeline
 from diffusers.utils import export_to_ply
 import trimesh
 import numpy as np
 import os
 from datetime import datetime
+from typing import Optional
+from PIL import Image
+
+from tsr.system import TSR
+from tsr.utils import remove_background, resize_foreground
 
 # --- Configuration ---
 shap_e_model_name = "openai/shap-e"
@@ -15,6 +20,7 @@ pipe_shap_e = None
 pipe_tripo_sr = None
 device = None
 torch_dtype = None
+
 
 def initialize_pipelines():
     """Initializes all 3D generation pipelines and moves them to the appropriate device."""
@@ -34,31 +40,51 @@ def initialize_pipelines():
         else:
             device = torch.device("cpu")
             torch_dtype = torch.float32
-        print(f"🐍 [Figurine Generator] Using device: {device} with dtype: {torch_dtype}")
+        print(
+            f"🐍 [Figurine Generator] Using device: {device} with dtype: {torch_dtype}"
+        )
 
     # --- Load Shap-E Pipeline ---
     if not pipe_shap_e:
-        print(f"🐍 [Figurine Generator] Loading Shap-E pipeline from '{shap_e_model_name}'...")
+        print(
+            f"🐍 [Figurine Generator] Loading Shap-E pipeline from '{shap_e_model_name}'..."
+        )
         try:
-            pipe_shap_e = ShapEPipeline.from_pretrained(shap_e_model_name, torch_dtype=torch_dtype)
+            pipe_shap_e = ShapEPipeline.from_pretrained(
+                shap_e_model_name, torch_dtype=torch_dtype
+            )
             pipe_shap_e = pipe_shap_e.to(device)
             print("✅ [Figurine Generator] Shap-E pipeline loaded successfully.")
         except Exception as e:
             print(f"❌ [Figurine Generator] Failed to load the Shap-E pipeline: {e}")
             pipe_shap_e = None
 
-    # --- Load TripoSR Pipeline ---
+    # --- Load TripoSR Model ---
     if not pipe_tripo_sr:
-        print(f"🐍 [Figurine Generator] Loading TripoSR pipeline from '{tripo_sr_model_name}'...")
+        print(
+            f"🐍 [Figurine Generator] Loading TripoSR model from '{tripo_sr_model_name}'..."
+        )
         try:
-            pipe_tripo_sr = TripoSRPipeline.from_pretrained(tripo_sr_model_name, torch_dtype=torch_dtype)
-            pipe_tripo_sr = pipe_tripo_sr.to(device)
-            print("✅ [Figurine Generator] TripoSR pipeline loaded successfully.")
+            pipe_tripo_sr = TSR.from_pretrained(
+                tripo_sr_model_name,
+                config_name="config.yaml",
+                weight_name="model.ckpt",
+            )
+            pipe_tripo_sr.renderer.set_chunk_size(8192)
+            pipe_tripo_sr.to(device)
+            print("✅ [Figurine Generator] TripoSR model loaded successfully.")
         except Exception as e:
-            print(f"❌ [Figurine Generator] Failed to load the TripoSR pipeline: {e}")
+            print(f"❌ [Figurine Generator] Failed to load the TripoSR model: {e}")
             pipe_tripo_sr = None
 
-def _refine_mesh(ply_path: str, iterations: int = 1, alpha: float = 0.1, beta: float = 0.5, smooth_iterations: int = 10) -> None:
+
+def _refine_mesh(
+    ply_path: str,
+    iterations: int = 1,
+    alpha: float = 0.1,
+    beta: float = 0.5,
+    smooth_iterations: int = 10,
+) -> None:
     """
     Refines a mesh using trimesh for better detail.
     This involves subdivision to increase vertex count and smoothing.
@@ -69,7 +95,9 @@ def _refine_mesh(ply_path: str, iterations: int = 1, alpha: float = 0.1, beta: f
     :param smooth_iterations: Number of smoothing iterations.
     """
     try:
-        print(f"🐍 [Figurine Generator] Refining mesh at {ply_path} with {iterations} subdivision(s)...")
+        print(
+            f"🐍 [Figurine Generator] Refining mesh at {ply_path} with {iterations} subdivision(s)..."
+        )
         mesh = trimesh.load(ply_path)
 
         # Subdivide the mesh. More iterations create significantly more vertices.
@@ -77,13 +105,16 @@ def _refine_mesh(ply_path: str, iterations: int = 1, alpha: float = 0.1, beta: f
             mesh = mesh.subdivide()
 
         # Smooth the mesh to reduce jagged edges from subdivision.
-        trimesh.smoothing.filter_humphrey(mesh, alpha=alpha, beta=beta, iterations=smooth_iterations)
+        trimesh.smoothing.filter_humphrey(
+            mesh, alpha=alpha, beta=beta, iterations=smooth_iterations
+        )
 
         # Overwrite the original file with the refined mesh
         mesh.export(ply_path)
         print(f"✅ [Figurine Generator] Mesh refined and saved successfully.")
     except Exception as e:
         print(f"⚠️ [Figurine Generator] Could not refine mesh: {e}")
+
 
 def _scale_mesh(ply_path: str, max_dimension_mm: float):
     """
@@ -93,7 +124,9 @@ def _scale_mesh(ply_path: str, max_dimension_mm: float):
     :param max_dimension_mm: The maximum size for the largest dimension in millimeters.
     """
     try:
-        print(f"🐍 [Figurine Generator] Scaling mesh at {ply_path} to max {max_dimension_mm}mm...")
+        print(
+            f"🐍 [Figurine Generator] Scaling mesh at {ply_path} to max {max_dimension_mm}mm..."
+        )
         mesh = trimesh.load(ply_path)
 
         # Get the current bounding box size
@@ -111,50 +144,82 @@ def _scale_mesh(ply_path: str, max_dimension_mm: float):
 
         # Overwrite the original file with the scaled mesh
         mesh.export(ply_path)
-        print(f"✅ [Figurine Generator] Mesh scaled successfully. New max dimension is approx {max_dimension_mm}mm.")
+        print(
+            f"✅ [Figurine Generator] Mesh scaled successfully. New max dimension is approx {max_dimension_mm}mm."
+        )
     except Exception as e:
         print(f"⚠️ [Figurine Generator] Could not scale mesh: {e}")
 
-def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = "Examples/generated_figurines") -> str:
+
+def generate_figurine(
+    prompt: str,
+    quality: str = "standard",
+    output_dir: str = "Examples/generated_figurines",
+    image_path: Optional[str] = None,
+) -> str:
     """
-    Generates a 3D figurine model from a text prompt using different pipelines based on quality.
-    - quality 'petit': Shap-E, fast preview, scaled to 25mm.
-    - quality 'standard': Shap-E, fast preview.
-    - quality 'detailed': Shap-E, higher quality.
-    - quality 'ultra_realistic': TripoSR, highest quality.
+    Generates a 3D figurine model.
+    - quality 'petit', 'standard', 'detailed': Uses Shap-E for text-to-3D generation.
+    - quality 'ultra_realistic': Uses TripoSR for image-to-3D generation.
+    :param prompt: The text prompt for text-to-3D models.
+    :param quality: The quality setting.
+    :param output_dir: The directory to save the output file.
+    :param image_path: The path to the input image for image-to-3D models.
     """
     initialize_pipelines()
 
-    print(f"🐍 [Figurine Generator] Generating '{quality}' model for prompt: '{prompt}'...")
-    os.makedirs(output_dir, exist_ok=True)
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    sanitized_prompt = "".join(c for c in prompt if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')[:30]
+
+    if quality == "ultra_realistic":
+        if image_path is None:
+            return "Error: Image path is required for ultra-realistic quality."
+        print(
+            f"🐍 [Figurine Generator] Generating '{quality}' model for image: '{image_path}'..."
+        )
+        sanitized_prompt = os.path.splitext(os.path.basename(image_path))[0]
+    else:
+        print(
+            f"🐍 [Figurine Generator] Generating '{quality}' model for prompt: '{prompt}'..."
+        )
+        sanitized_prompt = (
+            "".join(c for c in prompt if c.isalnum() or c in (" ", "_"))
+            .rstrip()
+            .replace(" ", "_")[:30]
+        )
+
+    os.makedirs(output_dir, exist_ok=True)
     filename = f"{timestamp}_{sanitized_prompt}_{quality}.ply"
     output_path = os.path.join(output_dir, filename)
 
     try:
         if quality == "ultra_realistic":
             if not pipe_tripo_sr:
-                return "Error: TripoSR pipeline is not available. Check logs for details."
+                return "Error: TripoSR model is not available. Check logs for details."
 
             print("🔥 [TripoSR] Generating with TripoSR...")
-            mesh = pipe_tripo_sr(prompt, output_type="mesh").images[0]
-            # TripoSR returns a dict with vertices and faces
-            mesh_to_save = trimesh.Trimesh(vertices=mesh['vertices'], faces=mesh['faces'])
-            mesh_to_save.export(output_path)
+            assert image_path is not None
+            image = Image.open(image_path)
+            # You may want to remove the background here if the input image has one
+            # image = remove_background(image)
+            with torch.no_grad():
+                scene_codes = pipe_tripo_sr([image], device=device)
+
+            meshes = pipe_tripo_sr.extract_mesh(scene_codes)
+            meshes[0].export(output_path)
 
             # Apply more aggressive refinement for TripoSR
             _refine_mesh(output_path, iterations=2, alpha=0.05, beta=0.2)
 
         else:  # 'petit', 'standard', or 'detailed'
             if not pipe_shap_e:
-                return "Error: Shap-E pipeline is not available. Check logs for details."
+                return (
+                    "Error: Shap-E pipeline is not available. Check logs for details."
+                )
 
             if quality == "detailed":
                 inference_steps, frame_size = 128, 512
             elif quality == "petit":
-                inference_steps, frame_size = 32, 128  # Faster settings for small models
+                inference_steps, frame_size = (32, 128)
             else:  # standard
                 inference_steps, frame_size = 64, 256
 
@@ -164,7 +229,7 @@ def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = 
                 guidance_scale=15.0,
                 num_inference_steps=inference_steps,
                 frame_size=frame_size,
-                output_type="mesh"
+                output_type="mesh",
             ).images[0]
             export_to_ply(mesh, output_path)
 
@@ -180,10 +245,12 @@ def generate_figurine(prompt: str, quality: str = "standard", output_dir: str = 
     except Exception as e:
         print(f"❌ [Figurine Generator] An error occurred during model generation: {e}")
         import traceback
+
         traceback.print_exc()
         return f"Error: {e}"
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("\n--- Running standalone test of figurine_generator.py ---")
     test_output_dir = "Examples/generated_figurines_test"
     print(f"Test output directory: '{test_output_dir}'")
@@ -191,7 +258,9 @@ if __name__ == '__main__':
     # Test 1: Standard Quality (Shap-E)
     test_prompt_standard = "a robot toy"
     print(f"\n[1] Testing Standard Quality (Shap-E)...")
-    path_standard = generate_figurine(test_prompt_standard, quality="standard", output_dir=test_output_dir)
+    path_standard = generate_figurine(
+        test_prompt_standard, quality="standard", output_dir=test_output_dir
+    )
     if "Error" not in path_standard:
         print(f"    ✅ Standard test successful! Model saved at: {path_standard}")
     else:
@@ -200,20 +269,35 @@ if __name__ == '__main__':
     # Test 2: Detailed Quality (Shap-E)
     test_prompt_detailed = "a detailed sports car"
     print(f"\n[2] Testing Detailed Quality (Shap-E)...")
-    path_detailed = generate_figurine(test_prompt_detailed, quality="detailed", output_dir=test_output_dir)
+    path_detailed = generate_figurine(
+        test_prompt_detailed, quality="detailed", output_dir=test_output_dir
+    )
     if "Error" not in path_detailed:
         print(f"    ✅ Detailed test successful! Model saved at: {path_detailed}")
     else:
         print(f"    ❌ Detailed test failed. Reason: {path_detailed}")
 
     # Test 3: Ultra-Realistic Quality (TripoSR)
-    test_prompt_realistic = "a high-resolution DSLR camera"
-    print(f"\n[3] Testing Ultra-Realistic Quality (TripoSR)...")
-    path_realistic = generate_figurine(test_prompt_realistic, quality="ultra_realistic", output_dir=test_output_dir)
+    test_image_path = (
+        "Examples/photogrammetry_test_images_bridge/bridge_test_image_0.png"
+    )
+    print(
+        f"\n[3] Testing Ultra-Realistic Quality (TripoSR) with image {test_image_path}..."
+    )
+    path_realistic = generate_figurine(
+        "a bridge",
+        quality="ultra_realistic",
+        output_dir=test_output_dir,
+        image_path=test_image_path,
+    )
     if "Error" not in path_realistic:
-        print(f"    ✅ Ultra-Realistic test successful! Model saved at: {path_realistic}")
+        print(
+            f"    ✅ Ultra-Realistic test successful! Model saved at: {path_realistic}"
+        )
     else:
         print(f"    ❌ Ultra-Realistic test failed. Reason: {path_realistic}")
 
     print("\n--- Standalone test finished ---")
-    print(f"You can view the generated .ply files in the '{test_output_dir}' directory.")
+    print(
+        f"You can view the generated .ply files in the '{test_output_dir}' directory."
+    )
