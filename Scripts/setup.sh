@@ -100,6 +100,19 @@ echo "✅ Virtual environment created."
 echo "› Activating virtual environment and installing Python packages..."
 source "$VENV_DIR/bin/activate"
 
+# Explicitly set the C/C++ compiler. The torchmcubes build fails if CXX is
+# set to a non-existent compiler (like g++-11). We force it to use the
+# compiler installed by Homebrew.
+if [ -f "$BREW_PREFIX/bin/g++-15" ]; then
+    export CXX="$BREW_PREFIX/bin/g++-15"
+    export CC="$BREW_PREFIX/bin/gcc-15"
+else
+    export CXX="$BREW_PREFIX/bin/g++"
+    export CC="$BREW_PREFIX/bin/gcc"
+fi
+
+echo "› Using CXX=$CXX and CC=$CC for build."
+
 pip install --upgrade pip
 
 # Install packages from requirements.txt

@@ -21,9 +21,10 @@ struct Toolbar: View {
             .help("Importer un modèle")
 
             Button(action: {
-                let placeholderData = "Ceci est un test d'exportation".data(using: .utf8) ?? Data()
-                document = ExportedFile(data: placeholderData)
-                isExporting = true
+                if let data = appController.exportCurrentSceneToData(format: .gltf) {
+                    document = ExportedFile(data: data)
+                    isExporting = true
+                }
             }) {
                 Image(systemName: "square.and.arrow.up")
             }
@@ -80,8 +81,8 @@ struct Toolbar: View {
         .fileExporter(
             isPresented: $isExporting,
             document: document,
-            contentType: .plainText, // TODO: Changer pour le type de fichier 3D approprié
-            defaultFilename: "mon_modele.txt" // TODO: Changer l'extension
+            contentType: .gltf,
+            defaultFilename: "model.gltf"
         ) { result in
             switch result {
             case .success(let url):
@@ -90,5 +91,11 @@ struct Toolbar: View {
                 print("Erreur d'exportation: \(error.localizedDescription)")
             }
         }
+    }
+}
+
+extension UTType {
+    static var gltf: UTType {
+        UTType(exportedAs: "com.example.gltf")
     }
 }
