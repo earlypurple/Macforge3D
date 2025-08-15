@@ -1,6 +1,14 @@
 import SwiftUI
 import Combine
 
+// Enum for quality settings
+enum GenerationQuality: String, CaseIterable, Identifiable {
+    case fast = "Fast"
+    case balanced = "Balanced"
+    case high = "High Quality"
+    var id: Self { self }
+}
+
 struct TextTo3DView: View {
     // State for the text prompt entered by the user.
     @State private var prompt: String = "a comfortable armchair, modern design"
@@ -8,11 +16,18 @@ struct TextTo3DView: View {
     // State for the selected model color.
     @State private var modelColor: Color = .blue
 
+    // State for the generation quality
+    @State private var quality: GenerationQuality = .balanced
+
     // State to track the generation process for disabling UI elements.
     @State private var isGenerating: Bool = false
 
     // State to hold the result from the generation script.
-    @State private var generatedModelPath: String?
+    @State private var generatedModelURL: URL?
+
+    // State for alert presentation
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
 
     // Task for debounced generation.
     @State private var generationTask: Task<Void, Never>?
@@ -34,8 +49,14 @@ struct TextTo3DView: View {
                     }
             }
 
-            Section(header: Text("Customization").font(.headline)) {
+            Section(header: Text("Settings").font(.headline)) {
                 ColorPicker("Model Color", selection: $modelColor)
+                Picker("Quality", selection: $quality) {
+                    ForEach(GenerationQuality.allCases) { quality in
+                        Text(quality.rawValue).tag(quality)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
 
             if isGenerating {
@@ -50,9 +71,7 @@ struct TextTo3DView: View {
                 .padding()
             }
 
-            if let modelPath = generatedModelPath {
-                let modelURL = URL(fileURLWithPath: modelPath)
-
+            if let modelURL = generatedModelURL {
                 Section(header: Text("Generated Model Preview").font(.headline)) {
                     ThreeDPreviewView(modelURL: modelURL, modelColor: modelColor)
                         .frame(height: 350)
@@ -64,43 +83,46 @@ struct TextTo3DView: View {
         .padding()
         .navigationTitle("Text to 3D")
         .onAppear(perform: triggerGeneration) // Generate on first appearance
+        .alert("Error", isPresented: $showingAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(alertMessage)
+        }
     }
 
     private func triggerGeneration() {
-        // Cancel any previously scheduled generation task.
         generationTask?.cancel()
 
-        // Don't generate if the prompt is empty.
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedPrompt.isEmpty {
             isGenerating = false
             return
         }
 
-        // Schedule a new generation task with a debounce.
         generationTask = Task {
             do {
-                // Set generating state immediately for responsiveness
                 await MainActor.run {
                     self.isGenerating = true
+                    self.generatedModelURL = nil // Clear previous model
                 }
 
-                // Wait for 500ms. If the task is cancelled, it will throw.
                 try await Task.sleep(for: .milliseconds(500))
 
-                // If we are here, the user stopped typing. Start the real generation.
                 print("Starting generation for prompt: \(prompt)")
-                let result = await TextTo3DGenerator.generate(prompt: prompt)
+                let result = await TextTo3DGenerator.generate(prompt: prompt, quality: quality.rawValue)
 
-                // Update the UI on the main thread.
                 await MainActor.run {
-                    self.generatedModelPath = result
+                    switch result {
+                    case .success(let url):
+                        self.generatedModelURL = url
+                    case .failure(let error):
+                        self.alertMessage = error.localizedDescription
+                        self.showingAlert = true
+                    }
                     self.isGenerating = false
                 }
             } catch {
-                // Task was cancelled.
                 print("Generation task cancelled.")
-                // The isGenerating state will be handled by the next task that starts.
             }
         }
     }

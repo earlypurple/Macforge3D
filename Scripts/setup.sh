@@ -64,8 +64,8 @@ echo "✅ Homebrew setup complete."
 
 
 # --- 4. Install System Dependencies ---
-echo "› Installing system dependencies (Python 3.11, Git LFS)..."
-brew install python@3.11 git-lfs
+echo "› Installing system dependencies (Python 3.11, Git LFS, libsndfile)..."
+brew install python@3.11 git-lfs libsndfile
 echo "✅ System dependencies installed."
 
 
@@ -103,7 +103,10 @@ pip install --upgrade pip
 
 # Install packages from requirements.txt
 echo "› Installing packages from Python/requirements.txt..."
-pip install -r "Python/requirements.txt"
+# Install a CPU-only version of torch to save space
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Install other packages, excluding torch
+grep -v '^torch==' Python/requirements.txt | pip install -r /dev/stdin
 
 echo "✅ Python packages installed."
 deactivate

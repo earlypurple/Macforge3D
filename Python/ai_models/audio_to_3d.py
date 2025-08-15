@@ -22,9 +22,24 @@ def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generate
 
     # --- 1. Load Audio and Extract Features ---
     try:
-        # Load the audio file. 'sr=22050' standardizes the sampling rate.
-        # 'duration=30' limits the analysis to the first 30 seconds to keep it fast.
-        y, sr = librosa.load(audio_path, sr=22050, duration=30)
+        import soundfile as sf
+        # Load the audio file using soundfile to avoid librosa's backend issues.
+        y, sr = sf.read(audio_path)
+
+        # Ensure the audio is mono for librosa's feature extraction
+        if y.ndim > 1:
+            y = np.mean(y, axis=1)
+
+        # Resample to a standard rate if necessary
+        target_sr = 22050
+        if sr != target_sr:
+            y = librosa.resample(y, orig_sr=sr, target_sr=target_sr)
+            sr = target_sr
+
+        # Limit to 30 seconds
+        max_duration = 30
+        if len(y) > sr * max_duration:
+            y = y[:sr * max_duration]
 
         # Extract Root Mean Square (RMS) to represent overall loudness/energy.
         # We'll use the average energy.
