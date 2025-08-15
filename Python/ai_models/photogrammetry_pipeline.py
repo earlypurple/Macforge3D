@@ -3,6 +3,7 @@ import os
 import tempfile
 import shutil
 from datetime import datetime
+from .mesh_processor import repair_mesh, scale_mesh
 
 def find_generated_model(output_dir):
     """Finds the most likely final model file from the Meshroom output."""
@@ -32,16 +33,23 @@ def find_generated_model(output_dir):
     return None
 
 
-def run_photogrammetry(image_paths: list, output_base_dir: str = "Examples/generated_photogrammetry") -> str:
+def run_photogrammetry(
+    image_paths: list,
+    output_base_dir: str = "Examples/generated_photogrammetry",
+    should_repair: bool = True,
+    target_size_mm: float = 0.0
+) -> str:
     """
-    Runs the Meshroom photogrammetry pipeline on a list of images.
+    Runs the Meshroom photogrammetry pipeline and optionally processes the output.
 
     Args:
         image_paths: A list of absolute paths to the input images.
         output_base_dir: The base directory to save the final model.
+        should_repair: Boolean flag to enable/disable mesh repair.
+        target_size_mm: The target size for the model's longest dimension.
 
     Returns:
-        The path to the generated 3D model file, or an error string.
+        The path to the generated and processed 3D model file, or an error string.
     """
     if not image_paths:
         return "Error: No image paths provided."
@@ -57,7 +65,6 @@ def run_photogrammetry(image_paths: list, output_base_dir: str = "Examples/gener
 
         # --- Construct the command for meshroom_batch ---
         # Ensure meshroom_batch is in the system's PATH.
-        # On macOS, if installed with homebrew, it should be.
         command = [
             "meshroom_batch",
             "--input", *image_paths,
@@ -86,21 +93,52 @@ def run_photogrammetry(image_paths: list, output_base_dir: str = "Examples/gener
             print("✅ Meshroom process completed successfully.")
 
             # --- Find the generated model file in the output directory ---
-            # Meshroom copies the final result to the --output directory
-            final_model_path = find_generated_model(temp_cache_dir)
+            raw_model_path = find_generated_model(temp_cache_dir)
 
-            if not final_model_path:
+            if not raw_model_path:
                 return "Error: Could not find the generated model file in Meshroom's output."
 
-            # --- Copy the final model and its materials to the run_output_dir ---
-            model_dir = os.path.dirname(final_model_path)
+            # --- Copy all generated assets (model, mtl, textures) to the final output directory ---
+            model_dir = os.path.dirname(raw_model_path)
             for file in os.listdir(model_dir):
                 shutil.copy(os.path.join(model_dir, file), run_output_dir)
 
-            final_path_in_output = os.path.join(run_output_dir, os.path.basename(final_model_path))
+            # This is the path to the raw model inside our persistent output folder
+            current_path = os.path.join(run_output_dir, os.path.basename(raw_model_path))
 
-            print(f"✅ Final model copied to: {final_path_in_output}")
-            return final_path_in_output
+            print(f"✅ Raw model and assets copied to: {run_output_dir}")
+
+            # --- Post-processing ---
+
+            # Stage 1: Repair
+            if should_repair:
+                base_name = os.path.splitext(os.path.basename(current_path))[0]
+                repaired_path = os.path.join(run_output_dir, f"{base_name}_repaired.obj")
+                if repair_mesh(current_path, repaired_path):
+                    # If repair is successful, the next stage uses the repaired model
+                    current_path = repaired_path
+                else:
+                    print("⚠️  Mesh repair failed. Proceeding with the original model.")
+
+            # Stage 2: Scale
+            # The final model will be named based on the input, but with a suffix
+            base_name = os.path.splitext(os.path.basename(current_path))[0]
+            final_path = os.path.join(run_output_dir, f"{base_name}_processed.obj")
+
+            if scale_mesh(current_path, final_path, target_size_mm):
+                current_path = final_path
+            else:
+                print("⚠️  Mesh scaling failed. Saving the unscaled version.")
+                # Ensure the file is at the expected final path
+                if current_path != final_path:
+                    shutil.move(current_path, final_path)
+                    mtl_src = current_path.replace('.obj', '.mtl')
+                    if os.path.exists(mtl_src):
+                        shutil.move(mtl_src, final_path.replace('.obj', '.mtl'))
+                current_path = final_path
+
+            print(f"✅ Post-processing complete. Final model is at: {current_path}")
+            return current_path
 
         except FileNotFoundError:
             error_message = "Error: 'meshroom_batch' command not found. Is Meshroom installed and in the system's PATH?"
@@ -140,7 +178,8 @@ if __name__ == '__main__':
         print("❌ Could not create or find test images. Aborting test.")
     else:
         print(f"Found/created {len(test_images)} test images in {test_image_dir}")
-        result_path = run_photogrammetry(test_images)
+        print("\n--- Testing photogrammetry pipeline with post-processing ---")
+        result_path = run_photogrammetry(test_images, should_repair=True, target_size_mm=200.0)
 
         if "Error" in result_path:
             print(f"\n❌ Photogrammetry test failed: {result_path}")
