@@ -64,8 +64,9 @@ echo "✅ Homebrew setup complete."
 
 
 # --- 4. Install System Dependencies ---
-echo "› Installing system dependencies (Python 3.11, Git LFS, libsndfile)..."
-brew install python@3.11 git-lfs libsndfile
+echo "› Installing system dependencies (Python 3.11, Git LFS, libsndfile, SwiftLint)..."
+# SwiftLint is only installed on macOS, but brew will handle this gracefully.
+brew install python@3.11 git-lfs libsndfile swiftlint
 echo "✅ System dependencies installed."
 
 
@@ -107,6 +108,10 @@ echo "› Installing packages from Python/requirements.txt..."
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 # Install other packages, excluding torch
 grep -v '^torch==' Python/requirements.txt | pip install -r /dev/stdin
+
+# Install development packages from requirements-dev.txt
+echo "› Installing development packages from Python/requirements-dev.txt..."
+pip install -r Python/requirements-dev.txt
 
 echo "✅ Python packages installed."
 deactivate

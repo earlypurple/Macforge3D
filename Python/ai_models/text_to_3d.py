@@ -17,6 +17,7 @@ pipe = None
 is_pipe_loaded = False
 device = None
 
+
 def initialize_pipeline() -> bool:
     """
     Initializes the Shap-E pipeline and moves it to the appropriate device.
@@ -49,7 +50,9 @@ def initialize_pipeline() -> bool:
         is_pipe_loaded = True
         return True
     except ConnectionError:
-        print("❌ Network error: Failed to download the model. Please check your internet connection.")
+        print(
+            "❌ Network error: Failed to download the model. Please check your internet connection."
+        )
         pipe = None
         is_pipe_loaded = False
         return False
@@ -59,7 +62,12 @@ def initialize_pipeline() -> bool:
         is_pipe_loaded = False
         return False
 
-def generate_3d_model(prompt: str, quality: str = "Balanced", output_dir: str = "Examples/generated_models") -> str:
+
+def generate_3d_model(
+    prompt: str,
+    quality: str = "Balanced",
+    output_dir: str = "Examples/generated_models",
+) -> str:
     """
     Generates a 3D model from a text prompt.
     Returns a JSON string with the status and either a file path or an error message.
@@ -68,7 +76,7 @@ def generate_3d_model(prompt: str, quality: str = "Balanced", output_dir: str = 
     quality_settings = {
         "Fast": {"steps": 32, "guidance": 10.0},
         "Balanced": {"steps": 64, "guidance": 15.0},
-        "High Quality": {"steps": 96, "guidance": 20.0}
+        "High Quality": {"steps": 96, "guidance": 20.0},
     }
     settings = quality_settings.get(quality, quality_settings["Balanced"])
     num_inference_steps = settings["steps"]
@@ -81,10 +89,14 @@ def generate_3d_model(prompt: str, quality: str = "Balanced", output_dir: str = 
     # --- Initialize pipeline ---
     if not is_pipe_loaded:
         if not initialize_pipeline():
-            return create_error_response("Failed to initialize the AI model. Check your internet connection and try again.")
+            return create_error_response(
+                "Failed to initialize the AI model. Check your internet connection and try again."
+            )
 
     if not pipe:
-        return create_error_response("AI pipeline is not available. Please restart the application.")
+        return create_error_response(
+            "AI pipeline is not available. Please restart the application."
+        )
 
     print(f"🐍 Generating 3D model for prompt: '{prompt}' with quality '{quality}'...")
 
@@ -93,7 +105,11 @@ def generate_3d_model(prompt: str, quality: str = "Balanced", output_dir: str = 
 
     # --- Generate a unique filename ---
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    sanitized_prompt = "".join(c for c in prompt if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')[:30]
+    sanitized_prompt = (
+        "".join(c for c in prompt if c.isalnum() or c in (" ", "_"))
+        .rstrip()
+        .replace(" ", "_")[:30]
+    )
     filename = f"{timestamp}_{quality}_{sanitized_prompt}.ply"
     output_path = os.path.join(output_dir, filename)
 
@@ -104,7 +120,7 @@ def generate_3d_model(prompt: str, quality: str = "Balanced", output_dir: str = 
             guidance_scale=guidance_scale,
             num_inference_steps=num_inference_steps,
             frame_size=256,
-            output_type="mesh"
+            output_type="mesh",
         ).images
 
         if not images:
@@ -121,7 +137,8 @@ def generate_3d_model(prompt: str, quality: str = "Balanced", output_dir: str = 
         print(f"❌ {error_message}")
         return create_error_response(error_message)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     print("\n--- Running standalone test of text_to_3d.py ---")
     test_prompt = "a robot wearing a cowboy hat"
     test_quality = "Fast"
@@ -130,13 +147,17 @@ if __name__ == '__main__':
     print(f"Test quality: '{test_quality}'")
     print(f"Test output directory: '{test_output_dir}'")
 
-    result_json = generate_3d_model(test_prompt, quality=test_quality, output_dir=test_output_dir)
+    result_json = generate_3d_model(
+        test_prompt, quality=test_quality, output_dir=test_output_dir
+    )
     result = json.loads(result_json)
 
     if result.get("status") == "success":
         path = result.get("path")
         print(f"\n✅ Test successful! Model saved at: {path}")
-        print(f"You can view the generated .ply file in the '{test_output_dir}' directory.")
+        print(
+            f"You can view the generated .ply file in the '{test_output_dir}' directory."
+        )
     else:
         message = result.get("message")
         print(f"❌ Test failed. Reason: {message}")

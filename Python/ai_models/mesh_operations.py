@@ -1,6 +1,7 @@
 import trimesh
 import numpy as np
 
+
 def subtract(base_model, subtraction_model, output_path: str) -> str:
     """
     Subtracts one mesh from another using the manifold3d library directly
@@ -15,7 +16,7 @@ def subtract(base_model, subtraction_model, output_path: str) -> str:
         str: The path to the generated mesh file, or an error message.
     """
     try:
-        import manifold3d
+        import manifold3d  # type: ignore
     except ImportError:
         return "Error: manifold3d library not found. Please ensure it is installed."
 
@@ -43,7 +44,9 @@ def subtract(base_model, subtraction_model, output_path: str) -> str:
 
         result_manifold_mesh = result_manifold.to_mesh()
 
-        result_vertices = np.array(result_manifold_mesh.vert_properties[:, :3], dtype=np.float64)
+        result_vertices = np.array(
+            result_manifold_mesh.vert_properties[:, :3], dtype=np.float64
+        )
         result_faces = np.array(result_manifold_mesh.tri_verts, dtype=np.int64)
 
         if len(result_vertices) == 0 or len(result_faces) == 0:
@@ -58,17 +61,17 @@ def subtract(base_model, subtraction_model, output_path: str) -> str:
     except Exception as e:
         error_message = f"Error during boolean subtraction: {e}"
         import traceback
+
         traceback.print_exc()
         return error_message
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     base = trimesh.creation.box(extents=[10, 10, 10])
     sub = trimesh.creation.icosphere(radius=6)
 
     print("--- Testing mesh subtraction script with direct manifold3d usage ---")
     path_or_error = subtract(
-        base_model=base,
-        subtraction_model=sub,
-        output_path='/tmp/subtracted_direct.ply'
+        base_model=base, subtraction_model=sub, output_path="/tmp/subtracted_direct.ply"
     )
     print(f"--- Script finished. Result: {path_or_error} ---")

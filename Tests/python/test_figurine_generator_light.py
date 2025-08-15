@@ -4,10 +4,11 @@ import pytest
 
 # Add the project root to the Python path
 # This is necessary for the test to find the `Python` module
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, project_root)
 
 from Python.ai_models.figurine_generator_light import generate_figurine
+
 
 @pytest.fixture
 def cleanup_generated_files():
@@ -19,6 +20,7 @@ def cleanup_generated_files():
         if os.path.exists(f):
             os.remove(f)
             print(f"🧹 Cleaned up {f}")
+
 
 def test_generate_figurine_light():
     """
@@ -34,9 +36,13 @@ def test_generate_figurine_light():
     # --- Assert ---
     assert output_path is not None, "The function should return a path."
     assert "Error" not in output_path, f"The function returned an error: {output_path}"
-    assert os.path.exists(output_path), f"The output file was not created at {output_path}"
+    assert os.path.exists(
+        output_path
+    ), f"The output file was not created at {output_path}"
     assert test_prompt in output_path, "The output filename should contain the prompt."
-    assert "light.ply" in output_path, "The output filename should indicate it's a light model."
+    assert (
+        "light.ply" in output_path
+    ), "The output filename should indicate it's a light model."
 
     # --- Cleanup ---
     # Even though we have a fixture, we can also clean up immediately
@@ -44,6 +50,7 @@ def test_generate_figurine_light():
     if os.path.exists(output_path):
         os.remove(output_path)
         print(f"🧹 Cleaned up {output_path}")
+
 
 def test_generate_figurine_petit(cleanup_generated_files):
     """
@@ -64,6 +71,7 @@ def test_generate_figurine_petit(cleanup_generated_files):
     assert os.path.exists(output_path)
     assert test_prompt in output_path
     assert f"_{quality}_light.ply" in output_path
+
 
 def test_generate_figurine_no_placeholder():
     """

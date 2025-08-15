@@ -3,8 +3,12 @@ import numpy as np
 import librosa
 import trimesh
 from datetime import datetime
+from typing import Optional
 
-def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generated_audio_models") -> str:
+
+def generate_3d_from_audio(
+    audio_path: str, output_dir: str = "Examples/generated_audio_models"
+) -> str:
     """
     Generates a 3D model from an audio file using a procedural approach.
 
@@ -22,7 +26,8 @@ def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generate
 
     # --- 1. Load Audio and Extract Features ---
     try:
-        import soundfile as sf
+        import soundfile as sf  # type: ignore
+
         # Load the audio file using soundfile to avoid librosa's backend issues.
         y, sr = sf.read(audio_path)
 
@@ -39,7 +44,7 @@ def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generate
         # Limit to 30 seconds
         max_duration = 30
         if len(y) > sr * max_duration:
-            y = y[:sr * max_duration]
+            y = y[: sr * max_duration]
 
         # Extract Root Mean Square (RMS) to represent overall loudness/energy.
         # We'll use the average energy.
@@ -65,7 +70,9 @@ def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generate
         # Create a base icosphere. It's a sphere made of triangles, good for deformation.
         # A subdivision of 4 gives a good balance of detail and performance.
         mesh = trimesh.creation.icosphere(subdivisions=4, radius=1.0)
-        print(f"✅ [Audio-to-3D] Base icosphere created with {len(mesh.vertices)} vertices.")
+        print(
+            f"✅ [Audio-to-3D] Base icosphere created with {len(mesh.vertices)} vertices."
+        )
     except Exception as e:
         error_msg = f"Error creating base mesh: {e}"
         print(f"❌ [Audio-to-3D] {error_msg}")
@@ -77,15 +84,28 @@ def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generate
     vertices = mesh.vertices.copy()
 
     # Normalize the chroma features to be between 0 and 1 for stable deformation.
-    chroma_normalized = (chroma_features - chroma_features.min()) / (chroma_features.max() - chroma_features.min() + 1e-6)
+    chroma_normalized = (chroma_features - chroma_features.min()) / (
+        chroma_features.max() - chroma_features.min() + 1e-6
+    )
 
     # Define 12 directions in 3D space, one for each pitch class.
     # These directions are spread out to create interesting deformations.
-    directions = np.array([
-        [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
-        [0.7, 0.7, 0], [-0.7, 0.7, 0], [0.7, -0.7, 0], [-0.7, -0.7, 0],
-        [0, 0.7, 0.7], [0, -0.7, 0.7]
-    ])
+    directions = np.array(
+        [
+            [1, 0, 0],
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, -1, 0],
+            [0, 0, 1],
+            [0, 0, -1],
+            [0.7, 0.7, 0],
+            [-0.7, 0.7, 0],
+            [0.7, -0.7, 0],
+            [-0.7, -0.7, 0],
+            [0, 0.7, 0.7],
+            [0, -0.7, 0.7],
+        ]
+    )
 
     # Calculate the displacement for each vertex.
     # The core of the procedural generation.
@@ -130,7 +150,8 @@ def generate_3d_from_audio(audio_path: str, output_dir: str = "Examples/generate
         print(f"❌ [Audio-to-3D] {error_msg}")
         return error_msg
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # This block allows for testing the script directly from the command line.
     print("\n--- Running standalone test of audio_to_3d.py ---")
 
@@ -138,38 +159,47 @@ if __name__ == '__main__':
     # In a real scenario, the user provides this.
     test_audio_dir = "Tests/python/test_data"
     os.makedirs(test_audio_dir, exist_ok=True)
-    test_audio_path = os.path.join(test_audio_dir, "sample_audio.wav")
+    test_audio_path: Optional[str] = os.path.join(test_audio_dir, "sample_audio.wav")
 
     try:
-        import soundfile as sf
+        import soundfile as sf  # type: ignore
+
         # Create a simple sine wave at 440 Hz (A4) for testing.
         sr_test = 22050
         duration_test = 5
         frequency = 440
-        t = np.linspace(0., duration_test, int(sr_test * duration_test))
+        t = np.linspace(0.0, duration_test, int(sr_test * duration_test))
         amplitude = np.iinfo(np.int16).max * 0.5
-        data = amplitude * np.sin(2. * np.pi * frequency * t)
+        data = amplitude * np.sin(2.0 * np.pi * frequency * t)
         sf.write(test_audio_path, data.astype(np.int16), sr_test)
         print(f"✅ Created a dummy audio file for testing at: {test_audio_path}")
     except ImportError:
-        print("⚠️ Could not create a dummy audio file because 'soundfile' is not installed.")
-        print("   Please install it (`pip install soundfile`) or provide your own audio file for testing.")
-        test_audio_path = None # Set to None to skip the test if we can't create the file.
+        print(
+            "⚠️ Could not create a dummy audio file because 'soundfile' is not installed."
+        )
+        print(
+            "   Please install it (`pip install soundfile`) or provide your own audio file for testing."
+        )
+        test_audio_path = (
+            None  # Set to None to skip the test if we can't create the file.
+        )
     except Exception as e:
         print(f"⚠️ An error occurred while creating the dummy audio file: {e}")
         test_audio_path = None
 
-    if test_audio_path and os.path.exists(test_audio_path):
+    if test_audio_path is not None and os.path.exists(test_audio_path):
         test_output_dir = "Examples/generated_audio_models_test"
         print(f"Test audio file: '{test_audio_path}'")
         print(f"Test output directory: '{test_output_dir}'")
 
         # Run the generation function
-        path = generate_3d_from_audio(test_audio_path, output_dir=test_output_dir)
+        path: str = generate_3d_from_audio(test_audio_path, output_dir=test_output_dir)
 
-        if path and "Error" not in path:
+        if "Error" not in path:
             print(f"\n✅ Test successful! Model saved at: {path}")
-            print(f"   You can view the generated .ply file in the '{test_output_dir}' directory.")
+            print(
+                f"   You can view the generated .ply file in the '{test_output_dir}' directory."
+            )
         else:
             print(f"\n❌ Test failed. Reason: {path}")
     else:

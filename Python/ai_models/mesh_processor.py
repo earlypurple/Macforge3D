@@ -1,8 +1,9 @@
 import trimesh
-import pymeshfix
+import pymeshfix  # type: ignore
 import numpy as np
 import os
 import shutil
+
 
 def repair_mesh(input_path: str, output_path: str) -> bool:
     """
@@ -35,9 +36,9 @@ def repair_mesh(input_path: str, output_path: str) -> bool:
         repaired_mesh = trimesh.Trimesh(meshfix.v, meshfix.f)
 
         # Copy materials if they exist
-        mtl_path = input_path.replace('.obj', '.mtl')
+        mtl_path = input_path.replace(".obj", ".mtl")
         if os.path.exists(mtl_path):
-            shutil.copy(mtl_path, output_path.replace('.obj', '.mtl'))
+            shutil.copy(mtl_path, output_path.replace(".obj", ".mtl"))
 
         repaired_mesh.export(output_path)
         print(f"✅ Repaired mesh saved to: {output_path}")
@@ -66,9 +67,9 @@ def scale_mesh(input_path: str, output_path: str, target_size_mm: float) -> bool
         # If the output path is different, we should move the file and its materials.
         if input_path != output_path:
             shutil.move(input_path, output_path)
-            mtl_src = input_path.replace('.obj', '.mtl')
+            mtl_src = input_path.replace(".obj", ".mtl")
             if os.path.exists(mtl_src):
-                shutil.move(mtl_src, output_path.replace('.obj', '.mtl'))
+                shutil.move(mtl_src, output_path.replace(".obj", ".mtl"))
         return True
 
     try:
@@ -78,8 +79,8 @@ def scale_mesh(input_path: str, output_path: str, target_size_mm: float) -> bool
         # Get the current bounding box dimensions
         current_dims = mesh.bounding_box.extents
         if not any(d > 1e-6 for d in current_dims):
-             print(f"❌ Cannot scale mesh with zero or invalid dimensions.")
-             return False
+            print(f"❌ Cannot scale mesh with zero or invalid dimensions.")
+            return False
 
         # Find the longest side
         max_dim = np.max(current_dims)
@@ -100,25 +101,41 @@ def scale_mesh(input_path: str, output_path: str, target_size_mm: float) -> bool
         print(f"❌ Failed to scale mesh {input_path}. Error: {e}")
         return False
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Create a dummy OBJ file for testing
     test_dir = "Examples/mesh_processor_test"
     os.makedirs(test_dir, exist_ok=True)
 
     # Unscaled and broken cube
-    vertices = np.array([
-        [0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0],
-        [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10]
-    ])
+    vertices = np.array(
+        [
+            [0, 0, 0],
+            [10, 0, 0],
+            [10, 10, 0],
+            [0, 10, 0],
+            [0, 0, 10],
+            [10, 0, 10],
+            [10, 10, 10],
+            [0, 10, 10],
+        ]
+    )
     # Missing one face to make it broken
-    faces = np.array([
-        [0, 1, 2], [0, 2, 3], # bottom
-        [4, 5, 6], [4, 6, 7], # top
-        [0, 1, 5], [0, 5, 4], # front
-        [2, 3, 7], [2, 7, 6], # back
-        [1, 2, 6], [1, 6, 5], # right
-        # left face is missing
-    ])
+    faces = np.array(
+        [
+            [0, 1, 2],
+            [0, 2, 3],  # bottom
+            [4, 5, 6],
+            [4, 6, 7],  # top
+            [0, 1, 5],
+            [0, 5, 4],  # front
+            [2, 3, 7],
+            [2, 7, 6],  # back
+            [1, 2, 6],
+            [1, 6, 5],  # right
+            # left face is missing
+        ]
+    )
 
     broken_path = os.path.join(test_dir, "broken_cube.obj")
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces)

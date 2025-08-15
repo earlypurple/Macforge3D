@@ -22,10 +22,35 @@ if [ ! -f "$PYTHON_EXEC" ]; then
     exit 1
 fi
 
-# Run pytest using the virtual environment's python
-"$PYTHON_EXEC" -m pytest Tests/python/
+# Activate python venv to run checks
+source "$VENV_DIR/bin/activate"
 
-echo "✅ Python tests passed."
+echo "› Checking Python code formatting with Black..."
+black --check .
+echo "✅ Black formatting check passed."
+
+echo "› Checking Python type hints with mypy..."
+# We need to target specific directories that have source code
+mypy Python/ai_models Python/exporters Python/simulation
+echo "✅ Mypy type checking passed."
+
+# Add the Python directory to the python path
+export PYTHONPATH=$PYTHONPATH:$(pwd)/Python
+
+# Run pytest using the virtual environment's python and check coverage
+echo "› Running python tests with coverage..."
+pytest \
+  --cov=Python/ai_models \
+  --cov=Python/exporters \
+  --cov=Python/simulation \
+  --cov-report=term-missing \
+  --cov-fail-under=80 \
+  Tests/python/
+
+echo "✅ Python tests and coverage check passed."
+
+# Deactivate venv
+deactivate
 
 
 # --- 2. Run Swift/macOS UI Tests ---
@@ -43,15 +68,32 @@ if ! command -v xcodebuild &> /dev/null; then
     exit 1
 fi
 
+# Check for SwiftLint
+if ! command -v swiftlint &> /dev/null; then
+    echo "⚠️ SwiftLint not found. Skipping Swift linting. Please install it by running 'brew install swiftlint'."
+else
+    echo "› Linting Swift code with SwiftLint..."
+    swiftlint
+    echo "✅ SwiftLint check passed."
+fi
+
 # Define project and scheme
 PROJECT="MacForge3D.xcodeproj"
 SCHEME="MacForge3D"
+
+# Detect architecture for xcodebuild
+ARCH="$(uname -m)"
+if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "arm64" ]; then
+    echo "🚨 Unsupported architecture: $ARCH. Only x86_64 and arm64 are supported for macOS tests."
+    exit 1
+fi
+echo "› Detected architecture: $ARCH"
 
 # Run the tests
 xcodebuild test \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
-  -destination 'platform=macOS,arch=x86_64' \
+  -destination "platform=macOS,arch=$ARCH" \
   -enableCodeCoverage YES
 
 echo "✅ Swift/macOS tests passed."

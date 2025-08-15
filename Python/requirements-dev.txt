@@ -1,0 +1,6 @@
+# Development-only dependencies for MacForge3D
+# Used for linting, type checking, and test coverage.
+
+black==24.4.2
+mypy==1.8.0
+pytest-cov==4.1.0

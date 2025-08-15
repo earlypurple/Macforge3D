@@ -5,6 +5,7 @@ This script provides a placeholder for an AI model that suggests optimal 3D prin
 slicer settings based on model features and user intent.
 """
 
+
 def suggest_settings(model_features):
     """
     Suggests slicer settings based on model features.
@@ -38,7 +39,7 @@ def suggest_settings(model_features):
             "nozzle_temp": 215,
             "infill_density": 30,
         }
-    else: # normal
+    else:  # normal
         return {
             "layer_height": 0.2,
             "print_speed": 60,
@@ -46,13 +47,14 @@ def suggest_settings(model_features):
             "infill_density": 20,
         }
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Example usage for testing the script directly.
     features = {
         "num_triangles": 10000,
-        "bounding_box_volume": 50*50*50,
+        "bounding_box_volume": 50 * 50 * 50,
         "printer_name": "Prusa i3 MK3S+",
-        "intent": "fast"
+        "intent": "fast",
     }
     settings = suggest_settings(features)
     print(f"Suggested settings: {settings}")
