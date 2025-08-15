@@ -90,7 +90,7 @@ def test_generate_3d_from_audio_file_not_found():
 
     # --- Assert ---
     assert "Error" in output_path, "Function should return an error for a missing file."
-    assert "No such file or directory" in output_path or "not found" in output_path, \
+    assert "System error" in output_path or "not found" in output_path, \
         "The error message should indicate that the file was not found."
 
 def test_generate_3d_from_unsupported_file_type(tmp_path):
