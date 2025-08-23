@@ -599,3 +599,204 @@ class MeshEnhancer:
                         result[vertex_idx] = vertices[vertex_idx] + edge_weight * laplacian
         
         return result
+    
+    def adaptive_mesh_enhancement(
+        self,
+        mesh: trimesh.Trimesh,
+        quality_target: float = 0.8,
+        max_iterations: int = 5
+    ) -> Tuple[trimesh.Trimesh, Dict[str, Any]]:
+        """
+        Amélioration adaptative du maillage basée sur la qualité cible.
+        
+        Args:
+            mesh: Maillage à améliorer
+            quality_target: Qualité cible (0-1)
+            max_iterations: Nombre maximum d'itérations
+            
+        Returns:
+            Tuple (maillage amélioré, métriques)
+        """
+        current_mesh = mesh.copy()
+        iteration_metrics = []
+        
+        for iteration in range(max_iterations):
+            # Analyser la qualité actuelle
+            quality_metrics = self._analyze_mesh_quality(current_mesh)
+            current_quality = quality_metrics['overall_quality']
+            
+            iteration_metrics.append({
+                'iteration': iteration,
+                'quality': current_quality,
+                'vertex_count': len(current_mesh.vertices),
+                'face_count': len(current_mesh.faces)
+            })
+            
+            # Vérifier si la qualité cible est atteinte
+            if current_quality >= quality_target:
+                logger.info(f"Qualité cible atteinte à l'itération {iteration}")
+                break
+            
+            # Appliquer des améliorations ciblées
+            if quality_metrics['edge_length_variance'] > 0.5:
+                current_mesh = self._regularize_edge_lengths(current_mesh)
+            
+            if quality_metrics['face_aspect_ratio'] > 2.0:
+                current_mesh = self._improve_face_quality(current_mesh)
+            
+            if quality_metrics['normal_consistency'] < 0.8:
+                current_mesh = self._fix_normal_consistency(current_mesh)
+            
+            # Lissage léger pour améliorer la qualité générale
+            vertices, faces, scale = self._prepare_mesh(current_mesh)
+            smoothed_vertices = self._smooth_vertices(vertices, faces, weight=0.3, iterations=1)
+            
+            # Restaurer l'échelle
+            smoothed_vertices = smoothed_vertices * scale
+            current_mesh = trimesh.Trimesh(
+                vertices=smoothed_vertices.cpu().numpy(),
+                faces=current_mesh.faces
+            )
+        
+        final_metrics = {
+            'iterations_performed': len(iteration_metrics),
+            'initial_quality': iteration_metrics[0]['quality'] if iteration_metrics else 0,
+            'final_quality': iteration_metrics[-1]['quality'] if iteration_metrics else 0,
+            'quality_improvement': (iteration_metrics[-1]['quality'] - iteration_metrics[0]['quality']) if len(iteration_metrics) > 1 else 0,
+            'iteration_details': iteration_metrics
+        }
+        
+        return current_mesh, final_metrics
+    
+    def _analyze_mesh_quality(self, mesh: trimesh.Trimesh) -> Dict[str, float]:
+        """Analyse détaillée de la qualité du maillage."""
+        try:
+            # Métriques de base
+            edge_lengths = np.array([np.linalg.norm(mesh.vertices[edge[1]] - mesh.vertices[edge[0]]) 
+                                   for edge in mesh.edges])
+            edge_length_variance = np.var(edge_lengths) / (np.mean(edge_lengths) ** 2) if len(edge_lengths) > 0 else 0
+            
+            # Ratio d'aspect des faces
+            face_areas = mesh.area_faces
+            face_perimeters = []
+            for face in mesh.faces:
+                perimeter = 0
+                for i in range(3):
+                    edge_vec = mesh.vertices[face[(i+1)%3]] - mesh.vertices[face[i]]
+                    perimeter += np.linalg.norm(edge_vec)
+                face_perimeters.append(perimeter)
+            
+            face_perimeters = np.array(face_perimeters)
+            aspect_ratios = face_perimeters**2 / (4 * np.pi * face_areas + 1e-8)
+            avg_aspect_ratio = np.mean(aspect_ratios)
+            
+            # Cohérence des normales
+            try:
+                normal_consistency = 1.0 - np.std(mesh.face_normals.flatten())
+            except:
+                normal_consistency = 0.5
+            
+            # Qualité globale (combinaison pondérée)
+            overall_quality = (
+                0.4 * max(0, 1 - edge_length_variance) +
+                0.3 * max(0, 1 - (avg_aspect_ratio - 1) / 2) +
+                0.3 * normal_consistency
+            )
+            
+            return {
+                'edge_length_variance': edge_length_variance,
+                'face_aspect_ratio': avg_aspect_ratio,
+                'normal_consistency': normal_consistency,
+                'overall_quality': max(0, min(1, overall_quality))
+            }
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'analyse de qualité: {e}")
+            return {
+                'edge_length_variance': 1.0,
+                'face_aspect_ratio': 3.0,
+                'normal_consistency': 0.0,
+                'overall_quality': 0.0
+            }
+    
+    def gpu_accelerated_enhancement(
+        self,
+        mesh: trimesh.Trimesh,
+        enhancement_strength: float = 0.5
+    ) -> trimesh.Trimesh:
+        """
+        Amélioration accélérée par GPU pour les gros maillages.
+        
+        Args:
+            mesh: Maillage à améliorer
+            enhancement_strength: Force de l'amélioration (0-1)
+            
+        Returns:
+            Maillage amélioré
+        """
+        if not torch.cuda.is_available():
+            logger.warning("GPU non disponible, utilisation du CPU")
+            return self.enhance_mesh(mesh)
+        
+        try:
+            # Préparer les données sur GPU
+            vertices, faces, scale = self._prepare_mesh(mesh)
+            vertices = vertices.cuda()
+            faces = faces.cuda()
+            
+            # Optimisations GPU
+            with torch.cuda.amp.autocast():  # Utiliser la précision mixte
+                # Lissage adaptatif
+                smoothed_vertices = self._gpu_adaptive_smoothing(vertices, faces, enhancement_strength)
+            
+            # Retourner sur CPU et restaurer l'échelle
+            enhanced_vertices = smoothed_vertices.cpu() * scale
+            
+            return trimesh.Trimesh(
+                vertices=enhanced_vertices.numpy(),
+                faces=mesh.faces
+            )
+            
+        except Exception as e:
+            logger.error(f"Erreur GPU, fallback CPU: {e}")
+            return self.enhance_mesh(mesh)
+    
+    def _gpu_adaptive_smoothing(
+        self,
+        vertices: torch.Tensor,
+        faces: torch.Tensor,
+        strength: float
+    ) -> torch.Tensor:
+        """Lissage adaptatif optimisé GPU."""
+        # Construction rapide du graphe d'adjacence sur GPU
+        edges = torch.stack([
+            torch.cat([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]),
+            torch.cat([faces[:, [1, 0]], faces[:, [2, 1]], faces[:, [0, 2]]])
+        ], dim=1).reshape(-1, 2)
+        
+        # Suppression des doublons
+        edges_sorted = torch.sort(edges, dim=1)[0]
+        edges_unique = torch.unique(edges_sorted, dim=0)
+        
+        # Lissage par convolution 1D optimisée
+        smoothed = vertices.clone()
+        
+        for _ in range(2):  # Quelques itérations
+            vertex_sums = torch.zeros_like(vertices)
+            vertex_counts = torch.zeros(vertices.shape[0], device=vertices.device)
+            
+            # Accumulation rapide avec scatter_add
+            vertex_sums.scatter_add_(0, edges_unique[:, 0:1].expand(-1, 3), vertices[edges_unique[:, 1]])
+            vertex_sums.scatter_add_(0, edges_unique[:, 1:2].expand(-1, 3), vertices[edges_unique[:, 0]])
+            
+            vertex_counts.scatter_add_(0, edges_unique[:, 0], torch.ones_like(edges_unique[:, 0], dtype=torch.float32))
+            vertex_counts.scatter_add_(0, edges_unique[:, 1], torch.ones_like(edges_unique[:, 1], dtype=torch.float32))
+            
+            # Moyennage avec protection contre division par zéro
+            valid_mask = vertex_counts > 0
+            neighbor_means = torch.zeros_like(vertices)
+            neighbor_means[valid_mask] = vertex_sums[valid_mask] / vertex_counts[valid_mask, None]
+            
+            # Application du lissage adaptatif
+            smoothed = (1 - strength) * smoothed + strength * neighbor_means
+        
+        return smoothed
