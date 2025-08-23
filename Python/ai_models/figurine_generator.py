@@ -116,6 +116,196 @@ def _refine_mesh(
         print(f"⚠️ [Figurine Generator] Could not refine mesh: {e}")
 
 
+def _apply_advanced_mesh_optimization(mesh):
+    """
+    Apply advanced mesh optimization techniques that don't require neural networks.
+    
+    Args:
+        mesh: trimesh.Trimesh object to optimize
+        
+    Returns:
+        Optimized trimesh.Trimesh object
+    """
+    try:
+        # Remove duplicate vertices
+        mesh.merge_vertices()
+        
+        # Remove degenerate faces
+        mesh.remove_degenerate_faces()
+        
+        # Remove duplicate faces
+        mesh.remove_duplicate_faces()
+        
+        # Fix normals if needed
+        if not mesh.is_winding_consistent:
+            mesh.fix_normals()
+        
+        # Remove unreferenced vertices
+        mesh.remove_unreferenced_vertices()
+        
+        # Apply edge-based smoothing if mesh is not too large
+        if len(mesh.vertices) < 50000:
+            try:
+                # Simple Laplacian smoothing
+                mesh = mesh.smoothed()
+            except Exception:
+                pass  # Skip if smoothing fails
+        
+        return mesh
+        
+    except Exception as e:
+        print(f"   Warning: Advanced optimization failed: {e}")
+        return mesh
+
+
+def _apply_maximum_enhancement(ply_path: str) -> None:
+    """
+    Applies maximum quality enhancement techniques to a mesh.
+    
+    This function combines multiple enhancement approaches:
+    - Multiple subdivision iterations for increased geometry density
+    - Advanced smoothing with optimized parameters
+    - Neural mesh enhancement if available
+    - Quality analysis and optimization
+    
+    :param ply_path: Path to the PLY file to enhance
+    """
+    try:
+        print("🔥 [Max Enhancement] Starting maximum quality enhancement pipeline...")
+        
+        # Load the mesh
+        mesh = trimesh.load(ply_path)
+        original_vertex_count = len(mesh.vertices)
+        print(f"📊 [Max Enhancement] Original mesh: {original_vertex_count} vertices, {len(mesh.faces)} faces")
+        
+        # Phase 1: Advanced subdivision for geometry density
+        print("🔧 [Max Enhancement] Phase 1: Advanced subdivision...")
+        for i in range(3):  # More aggressive subdivision
+            mesh = mesh.subdivide()
+            print(f"   Subdivision {i+1}: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+        
+        # Phase 2: Basic mesh optimization
+        print("🔧 [Max Enhancement] Phase 2: Basic mesh optimization...")
+        mesh = _apply_advanced_mesh_optimization(mesh)
+        
+        # Phase 3: Mesh quality improvement
+        print("🔧 [Max Enhancement] Phase 3: Mesh quality optimization...")
+        
+        # Remove degenerate faces and merge close vertices
+        original_faces = len(mesh.faces)
+        mesh.remove_degenerate_faces()
+        if len(mesh.faces) < original_faces:
+            print(f"   Removed {original_faces - len(mesh.faces)} degenerate faces")
+        
+        original_vertices = len(mesh.vertices)
+        mesh.merge_vertices()
+        if len(mesh.vertices) < original_vertices:
+            print(f"   Merged {original_vertices - len(mesh.vertices)} close vertices")
+        
+        # Fix mesh orientation
+        if not mesh.is_winding_consistent:
+            mesh.fix_normals()
+            print("   Fixed mesh normal orientation")
+        
+        # Phase 4: Advanced smoothing with multiple techniques
+        print("🔧 [Max Enhancement] Phase 4: Advanced smoothing...")
+        
+        # Apply Humphrey filter with optimized parameters for maximum quality
+        try:
+            trimesh.smoothing.filter_humphrey(
+                mesh, alpha=0.05, beta=0.2, iterations=15
+            )
+            print("   Applied Humphrey smoothing filter")
+        except Exception as e:
+            print(f"   Warning: Humphrey smoothing failed: {e}")
+        
+        # Apply Laplacian smoothing
+        try:
+            mesh = mesh.smoothed()
+            print("   Applied Laplacian smoothing")
+        except Exception as e:
+            print(f"   Warning: Laplacian smoothing failed: {e}")
+        
+        # Phase 5: Advanced mesh quality enhancement using mesh_processor
+        print("🔧 [Max Enhancement] Phase 5: Advanced quality enhancement...")
+        try:
+            from .mesh_processor import enhance_mesh_quality
+            
+            enhanced_mesh, enhancement_stats = enhance_mesh_quality(
+                mesh,
+                smooth_iterations=3,
+                fix_orientation=True,
+                remove_degenerate=True,
+                merge_close_vertices=True
+            )
+            
+            if enhancement_stats["success"]:
+                mesh = enhanced_mesh
+                print("   Applied advanced mesh quality enhancement")
+                for improvement in enhancement_stats["improvements"]:
+                    print(f"     - {improvement}")
+            else:
+                print("   Warning: Advanced quality enhancement failed")
+                
+        except ImportError:
+            print("   Advanced quality enhancement not available (mesh_processor import failed)")
+        except Exception as e:
+            print(f"   Warning: Advanced quality enhancement failed: {e}")
+        
+        # Phase 6: Attempt neural enhancement if mesh_enhancer is available
+        print("🔧 [Max Enhancement] Phase 6: Neural enhancement attempt...")
+        try:
+            from .mesh_enhancer import MeshEnhancer, MeshEnhancementConfig
+            
+            config = MeshEnhancementConfig(
+                resolution_factor=2.0,
+                smoothness_weight=0.3,
+                detail_preservation=0.8,
+                max_points=150000
+            )
+            
+            enhancer = MeshEnhancer(config)
+            enhanced_mesh = enhancer.enhance_mesh(mesh, return_original_scale=True)
+            mesh = enhanced_mesh
+            print("   Applied neural mesh enhancement")
+            
+        except ImportError:
+            print("   Neural enhancement not available (mesh_enhancer import failed)")
+        except Exception as e:
+            print(f"   Warning: Neural enhancement failed: {e}")
+        
+        # Phase 7: Final quality validation and export
+        print("🔧 [Max Enhancement] Phase 7: Final optimization and export...")
+        
+        # Ensure mesh is watertight if possible
+        if not mesh.is_watertight:
+            try:
+                mesh.fill_holes()
+                if mesh.is_watertight:
+                    print("   Made mesh watertight")
+            except Exception as e:
+                print(f"   Warning: Could not make mesh watertight: {e}")
+        
+        # Final quality report
+        final_vertex_count = len(mesh.vertices)
+        final_face_count = len(mesh.faces)
+        enhancement_ratio = final_vertex_count / original_vertex_count
+        
+        print(f"📊 [Max Enhancement] Final mesh: {final_vertex_count} vertices, {final_face_count} faces")
+        print(f"📊 [Max Enhancement] Enhancement ratio: {enhancement_ratio:.2f}x geometry density")
+        print(f"📊 [Max Enhancement] Watertight: {mesh.is_watertight}")
+        print(f"📊 [Max Enhancement] Volume: {mesh.volume:.6f}")
+        
+        # Export the enhanced mesh
+        mesh.export(ply_path)
+        print("✅ [Max Enhancement] Maximum quality enhancement completed successfully!")
+        
+    except Exception as e:
+        print(f"❌ [Max Enhancement] Enhancement failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def _scale_mesh(ply_path: str, max_dimension_mm: float):
     """
     Scales a mesh to a maximum bounding box dimension.
@@ -161,6 +351,7 @@ def generate_figurine(
     Generates a 3D figurine model.
     - quality 'petit', 'standard', 'detailed': Uses Shap-E for text-to-3D generation.
     - quality 'ultra_realistic': Uses TripoSR for image-to-3D generation.
+    - quality 'max': Uses the highest quality settings with maximum enhancement.
     :param prompt: The text prompt for text-to-3D models.
     :param quality: The quality setting.
     :param output_dir: The directory to save the output file.
@@ -216,7 +407,9 @@ def generate_figurine(
                     "Error: Shap-E pipeline is not available. Check logs for details."
                 )
 
-            if quality == "detailed":
+            if quality == "max":
+                inference_steps, frame_size = 256, 1024
+            elif quality == "detailed":
                 inference_steps, frame_size = 128, 512
             elif quality == "petit":
                 inference_steps, frame_size = (32, 128)
@@ -226,14 +419,18 @@ def generate_figurine(
             print(f"🔷 [Shap-E] Generating with {inference_steps} steps...")
             mesh = pipe_shap_e(
                 prompt,
-                guidance_scale=15.0,
+                guidance_scale=20.0 if quality == "max" else 15.0,
                 num_inference_steps=inference_steps,
                 frame_size=frame_size,
                 output_type="mesh",
             ).images[0]
             export_to_ply(mesh, output_path)
 
-            if quality == "detailed":
+            # Apply quality-specific enhancements
+            if quality == "max":
+                print("🚀 [Figurine Generator] Applying maximum quality enhancements...")
+                _apply_maximum_enhancement(output_path)
+            elif quality == "detailed":
                 _refine_mesh(output_path)
 
             if quality == "petit":
@@ -277,12 +474,23 @@ if __name__ == "__main__":
     else:
         print(f"    ❌ Detailed test failed. Reason: {path_detailed}")
 
-    # Test 3: Ultra-Realistic Quality (TripoSR)
+    # Test 3: Maximum Quality (Shap-E with full enhancement)
+    test_prompt_max = "a detailed dragon figurine"
+    print(f"\n[3] Testing Maximum Quality (Shap-E with full enhancement)...")
+    path_max = generate_figurine(
+        test_prompt_max, quality="max", output_dir=test_output_dir
+    )
+    if "Error" not in path_max:
+        print(f"    ✅ Maximum quality test successful! Model saved at: {path_max}")
+    else:
+        print(f"    ❌ Maximum quality test failed. Reason: {path_max}")
+
+    # Test 4: Ultra-Realistic Quality (TripoSR)
     test_image_path = (
         "Examples/photogrammetry_test_images_bridge/bridge_test_image_0.png"
     )
     print(
-        f"\n[3] Testing Ultra-Realistic Quality (TripoSR) with image {test_image_path}..."
+        f"\n[4] Testing Ultra-Realistic Quality (TripoSR) with image {test_image_path}..."
     )
     path_realistic = generate_figurine(
         "a bridge",

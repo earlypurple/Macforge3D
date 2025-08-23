@@ -16,6 +16,9 @@ dist/
 *.egg-info/
 .build/
 
+# Test files
+test_max_quality.py
+
 # Xcode
 *.xcodeproj/project.xcworkspace
 *.xcodeproj/xcuserdata/
