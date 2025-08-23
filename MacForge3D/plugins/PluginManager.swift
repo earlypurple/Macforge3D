@@ -2,7 +2,7 @@ import Foundation
 
 protocol Plugin {
     var name: String { get }
-    func activate()tu
+    func activate()
     func deactivate()
 }
 
