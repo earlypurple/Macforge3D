@@ -306,13 +306,176 @@ class PerformanceMonitor:
             'cpu': {
                 'avg': np.mean(cpu_data),
                 'max': np.max(cpu_data),
-                'p95': np.percentile(cpu_data, 95)
+                'p95': np.percentile(cpu_data, 95),
+                'min': np.min(cpu_data),
+                'std': np.std(cpu_data)
             },
             'memory': {
                 'avg': np.mean(mem_data),
                 'max': np.max(mem_data),
-                'p95': np.percentile(mem_data, 95)
+                'p95': np.percentile(mem_data, 95),
+                'min': np.min(mem_data),
+                'std': np.std(mem_data)
             },
             'alerts': len(self.metrics_buffer.get_alerts(hours=1)),
-            'simulations': len(self.metrics_buffer.get_simulation_metrics())
+            'simulations': len(self.metrics_buffer.get_simulation_metrics()),
+            'performance_score': self._calculate_performance_score(cpu_data, mem_data)
         }
+    
+    def _calculate_performance_score(self, cpu_data: List[float], mem_data: List[float]) -> float:
+        """
+        Calcule un score de performance global (0-100).
+        
+        Args:
+            cpu_data: Données d'utilisation CPU
+            mem_data: Données d'utilisation mémoire
+            
+        Returns:
+            Score de performance (100 = excellent, 0 = très mauvais)
+        """
+        try:
+            if not cpu_data or not mem_data:
+                return 50.0  # Score neutre si pas de données
+            
+            # Score CPU (plus c'est stable et modéré, mieux c'est)
+            cpu_avg = np.mean(cpu_data)
+            cpu_std = np.std(cpu_data)
+            
+            # Score optimal autour de 30-60% d'utilisation CPU
+            if cpu_avg <= 30:
+                cpu_score = 70 + (30 - cpu_avg)  # Bonus pour faible utilisation
+            elif cpu_avg <= 60:
+                cpu_score = 100 - (cpu_avg - 30) * 0.5  # Optimal
+            elif cpu_avg <= 80:
+                cpu_score = 85 - (cpu_avg - 60) * 2  # Dégradation modérée
+            else:
+                cpu_score = 45 - (cpu_avg - 80)  # Forte dégradation
+            
+            # Pénalité pour instabilité
+            cpu_score -= cpu_std * 0.5
+            
+            # Score mémoire (similaire au CPU)
+            mem_avg = np.mean(mem_data)
+            mem_std = np.std(mem_data)
+            
+            if mem_avg <= 40:
+                mem_score = 80 + (40 - mem_avg) * 0.5
+            elif mem_avg <= 70:
+                mem_score = 100 - (mem_avg - 40) * 0.67
+            elif mem_avg <= 85:
+                mem_score = 80 - (mem_avg - 70) * 2
+            else:
+                mem_score = 50 - (mem_avg - 85) * 2
+            
+            # Pénalité pour instabilité mémoire
+            mem_score -= mem_std * 0.3
+            
+            # Score global pondéré
+            performance_score = (cpu_score * 0.6 + mem_score * 0.4)
+            
+            # S'assurer que le score reste dans [0, 100]
+            return max(0.0, min(100.0, performance_score))
+            
+        except Exception as e:
+            logger.warning(f"Erreur lors du calcul du score de performance: {e}")
+            return 50.0
+    
+    def get_optimization_suggestions(self) -> List[Dict[str, str]]:
+        """
+        Génère des suggestions d'optimisation basées sur les métriques actuelles.
+        
+        Returns:
+            Liste de suggestions avec priorité et description
+        """
+        suggestions = []
+        
+        try:
+            # Obtenir les métriques récentes
+            recent_metrics = self.metrics_buffer.get_system_metrics(300)  # 5 dernières minutes
+            
+            if not recent_metrics:
+                return [{"priority": "info", "suggestion": "Pas assez de données pour générer des suggestions"}]
+            
+            cpu_data = [m.cpu_percent for m in recent_metrics]
+            mem_data = [m.memory_percent for m in recent_metrics]
+            
+            avg_cpu = np.mean(cpu_data)
+            avg_mem = np.mean(mem_data)
+            
+            # Suggestions CPU
+            if avg_cpu > 85:
+                suggestions.append({
+                    "priority": "high",
+                    "category": "cpu",
+                    "suggestion": f"Utilisation CPU très élevée ({avg_cpu:.1f}%). Réduisez le nombre de simulations parallèles ou fermez des applications."
+                })
+            elif avg_cpu > 70:
+                suggestions.append({
+                    "priority": "medium",
+                    "category": "cpu", 
+                    "suggestion": f"Utilisation CPU élevée ({avg_cpu:.1f}%). Surveillez les performances."
+                })
+            elif avg_cpu < 20:
+                suggestions.append({
+                    "priority": "low",
+                    "category": "cpu",
+                    "suggestion": f"Utilisation CPU faible ({avg_cpu:.1f}%). Vous pourriez augmenter la parallélisation."
+                })
+            
+            # Suggestions mémoire
+            if avg_mem > 90:
+                suggestions.append({
+                    "priority": "critical",
+                    "category": "memory",
+                    "suggestion": f"Mémoire critique ({avg_mem:.1f}%). Fermez des applications ou libérez de la mémoire immédiatement."
+                })
+            elif avg_mem > 80:
+                suggestions.append({
+                    "priority": "high",
+                    "category": "memory",
+                    "suggestion": f"Mémoire élevée ({avg_mem:.1f}%). Optimisez les paramètres ou réduisez la résolution des maillages."
+                })
+            elif avg_mem > 70:
+                suggestions.append({
+                    "priority": "medium",
+                    "category": "memory",
+                    "suggestion": f"Utilisation mémoire modérée ({avg_mem:.1f}%). Surveillez l'évolution."
+                })
+            
+            # Suggestions de stabilité
+            cpu_std = np.std(cpu_data)
+            if cpu_std > 20:
+                suggestions.append({
+                    "priority": "medium",
+                    "category": "stability",
+                    "suggestion": f"Utilisation CPU instable (écart-type: {cpu_std:.1f}). Vérifiez la régularité des charges de travail."
+                })
+            
+            # Suggestions générales de performance
+            performance_score = self._calculate_performance_score(cpu_data, mem_data)
+            if performance_score < 50:
+                suggestions.append({
+                    "priority": "high",
+                    "category": "performance",
+                    "suggestion": f"Score de performance faible ({performance_score:.1f}/100). Optimisation recommandée."
+                })
+            elif performance_score > 85:
+                suggestions.append({
+                    "priority": "info",
+                    "category": "performance", 
+                    "suggestion": f"Excellentes performances ({performance_score:.1f}/100). Système bien optimisé."
+                })
+            
+            # Si aucune suggestion spécifique
+            if not suggestions:
+                suggestions.append({
+                    "priority": "info",
+                    "category": "general",
+                    "suggestion": "Système fonctionne normalement. Aucune optimisation urgente nécessaire."
+                })
+            
+            return suggestions
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de suggestions: {e}")
+            return [{"priority": "error", "suggestion": f"Erreur lors de l'analyse: {str(e)}"}]
