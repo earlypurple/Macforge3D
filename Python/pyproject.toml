@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=42.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "macforge3d"
+version = "0.1.0"
+description = "MacForge3D Python package"
+requires-python = ">=3.8"
+authors = [
+    {name = "MacForge3D Team"}
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]

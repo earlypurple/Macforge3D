@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MacForge3D - Monitoring</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.2.31"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1"></script>
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="min-h-screen">
+        <!-- En-tête -->
+        <header class="bg-blue-600 text-white shadow-lg">
+            <div class="container mx-auto px-4 py-4">
+                <h1 class="text-2xl font-bold">MacForge3D Monitoring</h1>
+                <p class="text-sm opacity-75">Surveillance en temps réel</p>
+            </div>
+        </header>
+
+        <!-- Contenu principal -->
+        <main class="container mx-auto px-4 py-8">
+            <!-- Métriques en temps réel -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">CPU</h3>
+                    <div class="flex items-center">
+                        <span class="text-3xl font-bold mr-2">{{ currentMetrics.cpu_percent }}%</span>
+                        <trend-indicator :value="cpuTrend" />
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">Mémoire</h3>
+                    <div class="flex items-center">
+                        <span class="text-3xl font-bold mr-2">{{ currentMetrics.memory_percent }}%</span>
+                        <trend-indicator :value="memoryTrend" />
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">I/O</h3>
+                    <div class="flex items-center">
+                        <span class="text-3xl font-bold mr-2">{{ currentMetrics.io_write_bytes.toFixed(1) }} MB/s</span>
+                        <trend-indicator :value="ioTrend" />
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">Simulations Actives</h3>
+                    <div class="flex items-center">
+                        <span class="text-3xl font-bold">{{ activeSimulations }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graphiques -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <!-- CPU et Mémoire -->
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-gray-700 font-medium mb-4">Utilisation CPU et Mémoire</h3>
+                    <canvas ref="resourcesChart"></canvas>
+                </div>
+                
+                <!-- I/O -->
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-gray-700 font-medium mb-4">Activité I/O</h3>
+                    <canvas ref="ioChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Simulations -->
+            <div class="bg-white rounded-lg shadow mb-8">
+                <div class="px-4 py-3 border-b border-gray-200">
+                    <h3 class="text-gray-700 font-medium">Simulations Récentes</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Progrès</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Temps</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mémoire</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr v-for="sim in simulations" :key="sim.simulation_id">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {{ sim.simulation_id.slice(0, 8) }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span :class="getStatusClass(sim.status)">
+                                        {{ sim.status }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                        <div class="bg-blue-600 h-2.5 rounded-full"
+                                             :style="{ width: `${sim.progress * 100}%` }">
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ formatDuration(sim.processing_time) }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ formatMemory(sim.memory_usage) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Alertes -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-4 py-3 border-b border-gray-200">
+                    <h3 class="text-gray-700 font-medium">Alertes Récentes</h3>
+                </div>
+                <div class="divide-y divide-gray-200">
+                    <div v-for="alert in alerts" :key="alert.timestamp"
+                         :class="getAlertClass(alert.severity)"
+                         class="px-4 py-3">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5" :class="getAlertIconClass(alert.severity)"
+                                     viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd"
+                                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM9 7a1 1 0 112 0v4a1 1 0 11-2 0V7zm1 8a1 1 0 100-2 1 1 0 000 2z"
+                                          clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium">
+                                    {{ alert.message }}
+                                </h3>
+                                <div class="mt-1 text-xs text-gray-500">
+                                    {{ formatDate(alert.timestamp) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const app = Vue.createApp({
+            data() {
+                return {
+                    currentMetrics: {
+                        cpu_percent: 0,
+                        memory_percent: 0,
+                        io_write_bytes: 0
+                    },
+                    metricsHistory: [],
+                    simulations: [],
+                    alerts: [],
+                    ws: null,
+                    charts: {
+                        resources: null,
+                        io: null
+                    }
+                }
+            },
+            
+            computed: {
+                activeSimulations() {
+                    return this.simulations.filter(s => s.status === 'running').length
+                },
+                
+                cpuTrend() {
+                    return this.calculateTrend('cpu_percent')
+                },
+                
+                memoryTrend() {
+                    return this.calculateTrend('memory_percent')
+                },
+                
+                ioTrend() {
+                    return this.calculateTrend('io_write_bytes')
+                }
+            },
+            
+            methods: {
+                async fetchInitialData() {
+                    try {
+                        // Charger les données initiales
+                        const [metrics, simulations, alerts] = await Promise.all([
+                            fetch('/api/v1/metrics/history?hours=1').then(r => r.json()),
+                            fetch('/api/v1/simulations').then(r => r.json()),
+                            fetch('/api/v1/alerts').then(r => r.json())
+                        ])
+                        
+                        this.metricsHistory = metrics
+                        this.simulations = simulations
+                        this.alerts = alerts
+                        
+                        // Initialiser les graphiques
+                        this.initCharts()
+                        
+                    } catch (error) {
+                        console.error('Erreur lors du chargement des données:', error)
+                    }
+                },
+                
+                initWebSocket() {
+                    this.ws = new WebSocket('ws://localhost:8000/ws/metrics')
+                    
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data)
+                        this.updateMetrics(data.metrics)
+                    }
+                    
+                    this.ws.onclose = () => {
+                        setTimeout(() => this.initWebSocket(), 1000)
+                    }
+                },
+                
+                updateMetrics(metrics) {
+                    this.currentMetrics = metrics
+                    this.metricsHistory.push(metrics)
+                    
+                    // Mettre à jour les graphiques
+                    this.updateCharts()
+                },
+                
+                initCharts() {
+                    // Graphique des ressources
+                    const resourcesCtx = this.$refs.resourcesChart.getContext('2d')
+                    this.charts.resources = new Chart(resourcesCtx, {
+                        type: 'line',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: 'CPU',
+                                data: [],
+                                borderColor: 'rgb(59, 130, 246)',
+                                tension: 0.1
+                            }, {
+                                label: 'Mémoire',
+                                data: [],
+                                borderColor: 'rgb(239, 68, 68)',
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100
+                                }
+                            }
+                        }
+                    })
+                    
+                    // Graphique I/O
+                    const ioCtx = this.$refs.ioChart.getContext('2d')
+                    this.charts.io = new Chart(ioCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: 'I/O (MB/s)',
+                                data: [],
+                                backgroundColor: 'rgb(16, 185, 129)'
+                            }]
+                        },
+                        options: {
+                            responsive: true
+                        }
+                    })
+                },
+                
+                updateCharts() {
+                    if (!this.charts.resources || !this.charts.io) return
+                    
+                    const last10 = this.metricsHistory.slice(-10)
+                    const labels = last10.map(m => moment(m.timestamp).format('HH:mm:ss'))
+                    
+                    // Mettre à jour le graphique des ressources
+                    this.charts.resources.data.labels = labels
+                    this.charts.resources.data.datasets[0].data = last10.map(m => m.cpu_percent)
+                    this.charts.resources.data.datasets[1].data = last10.map(m => m.memory_percent)
+                    this.charts.resources.update()
+                    
+                    // Mettre à jour le graphique I/O
+                    this.charts.io.data.labels = labels
+                    this.charts.io.data.datasets[0].data = last10.map(m => m.io_write_bytes)
+                    this.charts.io.update()
+                },
+                
+                calculateTrend(metric) {
+                    if (this.metricsHistory.length < 2) return 0
+                    const last = this.metricsHistory.slice(-2)
+                    return last[1][metric] - last[0][metric]
+                },
+                
+                getStatusClass(status) {
+                    const classes = {
+                        running: 'bg-blue-100 text-blue-800',
+                        completed: 'bg-green-100 text-green-800',
+                        failed: 'bg-red-100 text-red-800'
+                    }
+                    return `px-2 py-1 text-xs font-medium rounded-full ${classes[status] || ''}`
+                },
+                
+                getAlertClass(severity) {
+                    const classes = {
+                        info: 'bg-blue-50',
+                        warning: 'bg-yellow-50',
+                        critical: 'bg-red-50'
+                    }
+                    return classes[severity] || 'bg-gray-50'
+                },
+                
+                getAlertIconClass(severity) {
+                    const classes = {
+                        info: 'text-blue-400',
+                        warning: 'text-yellow-400',
+                        critical: 'text-red-400'
+                    }
+                    return classes[severity] || 'text-gray-400'
+                },
+                
+                formatDuration(seconds) {
+                    return moment.duration(seconds, 'seconds').humanize()
+                },
+                
+                formatMemory(mb) {
+                    return mb >= 1024 ? `${(mb/1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`
+                },
+                
+                formatDate(date) {
+                    return moment(date).fromNow()
+                }
+            },
+            
+            mounted() {
+                this.fetchInitialData()
+                this.initWebSocket()
+                
+                // Rafraîchir les données toutes les minutes
+                setInterval(() => this.fetchInitialData(), 60000)
+            }
+        })
+
+        // Composant pour l'indicateur de tendance
+        app.component('trend-indicator', {
+            props: ['value'],
+            template: `
+                <span :class="{'text-green-500': value > 0, 'text-red-500': value < 0}"
+                      class="text-sm">
+                    <template v-if="value > 0">↑</template>
+                    <template v-else-if="value < 0">↓</template>
+                    <template v-else>→</template>
+                </span>
+            `
+        })
+
+        app.mount('#app')
+    </script>
+</body>
+</html>

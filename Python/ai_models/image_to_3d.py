@@ -1,9 +1,10 @@
-from .photogrammetry_pipeline import run_photogrammetry
 import os
-from PIL import Image, ImageDraw
+from datetime import datetime
+from .opencv_photogrammetry import create_point_cloud
+from .mesh_processor import repair_mesh, scale_mesh
 
-# This script now acts as a bridge to the photogrammetry pipeline.
-# The main generation logic is in `photogrammetry_pipeline.py`.
+# This script now uses OpenCV-based photogrammetry instead of Meshroom
+# The main generation logic is in opencv_photogrammetry.py
 
 
 def generate_3d_model_from_images(
@@ -14,40 +15,62 @@ def generate_3d_model_from_images(
     target_size_mm: float = 0.0,
 ) -> str:
     """
-    Generates a 3D model from a list of image files using the photogrammetry pipeline.
+    Generates a 3D model from a list of image files using OpenCV-based photogrammetry.
     This function is the main entry point called from the Swift application.
-
+    
     Args:
         image_paths: A list of absolute paths to the input images.
-        output_dir: The base directory where the final model and its assets will be saved.
-        quality: The desired quality level ("Draft", "Default", "High").
+        output_dir: The base directory where the final model will be saved.
+        quality: The desired quality level (affects point cloud density).
         should_repair: Boolean flag to enable/disable mesh repair.
         target_size_mm: The target size in mm for the model's longest dimension.
-
+        
     Returns:
         A string containing the path to the generated model file, or an error message.
     """
-    print(
-        f"🐍 Bridge script 'image_to_3d.py' received request for {len(image_paths)} images."
-    )
-    print(
-        f"🐍 Options: Quality='{quality}', Repair={should_repair}, Target Size={target_size_mm}mm"
-    )
-
     if not isinstance(image_paths, list) or not image_paths:
-        return "Error: Input must be a list of image paths."
+        return "Error: Input must be a non-empty list of image paths."
 
-    # Delegate the heavy lifting to the specialized photogrammetry script.
-    result = run_photogrammetry(
-        image_paths,
-        output_base_dir=output_dir,
-        quality=quality,
-        should_repair=should_repair,
-        target_size_mm=target_size_mm,
-    )
+    print(f"🔄 Processing {len(image_paths)} images...")
+    print(f"⚙️  Options: Quality='{quality}', Repair={should_repair}, Target Size={target_size_mm}mm")
 
-    print(f"🐍 Photogrammetry pipeline finished. Result: {result}")
-    return result
+    # Create output directory with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(output_dir, f"reconstruction_{timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    # Generate initial point cloud
+    point_cloud_path = os.path.join(run_dir, "point_cloud.ply")
+    
+    try:
+        result = create_point_cloud(image_paths, point_cloud_path)
+        if not result:
+            return "Error: Failed to create point cloud from images."
+            
+        current_path = result
+        
+        # Post-process the mesh if needed
+        if should_repair:
+            repaired_path = os.path.join(run_dir, "model_repaired.obj")
+            if repair_mesh(current_path, repaired_path):
+                current_path = repaired_path
+            else:
+                print("⚠️  Mesh repair failed, proceeding with original mesh")
+        
+        if target_size_mm > 0:
+            scaled_path = os.path.join(run_dir, "model_final.obj")
+            if scale_mesh(current_path, scaled_path, target_size_mm):
+                current_path = scaled_path
+            else:
+                print("⚠️  Mesh scaling failed, using unscaled version")
+        
+        print(f"✅ Model generation complete! Result saved at: {current_path}")
+        return current_path
+        
+    except Exception as e:
+        error_msg = f"Error during model generation: {str(e)}"
+        print(f"❌ {error_msg}")
+        return error_msg
 
 
 if __name__ == "__main__":
