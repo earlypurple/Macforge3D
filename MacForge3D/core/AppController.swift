@@ -190,6 +190,152 @@ class AppController: ObservableObject {
         vrManager.enableVR(for: model)
     }
     
+    // MARK: - Modern Technology Integration
+    
+    func initializeModernTechnologies() {
+        Task {
+            // Initialize modern tech stack
+            do {
+                let pythonBridge = PythonBridge.shared
+                let result = try await pythonBridge.callAsyncFunction(
+                    module: "modern_tech",
+                    function: "initialize_modern_technologies",
+                    arguments: []
+                )
+                
+                if let resultDict = result as? [String: Any] {
+                    let successCount = resultDict.values.compactMap { $0 as? Bool }.filter { $0 }.count
+                    print("🚀 Modern technologies initialized: \(successCount)/\(resultDict.count) components")
+                }
+            } catch {
+                print("❌ Failed to initialize modern technologies: \(error)")
+            }
+        }
+    }
+    
+    func generateModelWithAI(
+        prompt: String,
+        model: String = "gpt4v_3d",
+        enableNFT: Bool = false,
+        enableCollaboration: Bool = false,
+        enableWebXR: Bool = false
+    ) async -> Bool {
+        do {
+            let pythonBridge = PythonBridge.shared
+            let request: [String: Any] = [
+                "input_type": "text",
+                "prompt": prompt,
+                "model": model,
+                "options": [
+                    "quality": "detailed",
+                    "complexity": "high",
+                    "style": "realistic"
+                ],
+                "create_nft": enableNFT,
+                "enable_collaboration": enableCollaboration,
+                "enable_webxr": enableWebXR,
+                "creator_id": "swift_app_controller"
+            ]
+            
+            let result = try await pythonBridge.callAsyncFunction(
+                module: "modern_tech",
+                function: "create_model_with_modern_pipeline",
+                arguments: [request]
+            )
+            
+            if let resultDict = result as? [String: Any],
+               let success = resultDict["success"] as? Bool,
+               success {
+                
+                // Extract mesh data and create model
+                if let meshData = resultDict["mesh_data"] as? [String: Any],
+                   let vertices = meshData["vertices"] as? Int,
+                   let faces = meshData["faces"] as? Int {
+                    
+                    // Create a new 3D model from the AI generation
+                    let newModel = Model3D()
+                    newModel.name = "AI Generated: \(prompt.prefix(50))"
+                    newModel.meshResolution = vertices
+                    newModel.material = meshData["materials"] as? [String] ?? ["default"]
+                    
+                    // Add to scene
+                    sceneManager.addScene(newModel)
+                    
+                    print("✅ AI model generated successfully: \(vertices) vertices, \(faces) faces")
+                    
+                    // Handle additional features
+                    if let nftInfo = resultDict["nft_info"] as? [String: Any] {
+                        print("🎨 NFT created: \(nftInfo["token_id"] ?? "unknown")")
+                    }
+                    
+                    if let collaborationSession = resultDict["collaboration_session"] as? String {
+                        print("👥 Collaboration session: \(collaborationSession)")
+                    }
+                    
+                    if let webxrSession = resultDict["webxr_session"] as? String {
+                        print("🥽 WebXR session: \(webxrSession)")
+                    }
+                    
+                    return true
+                }
+            }
+            
+            return false
+            
+        } catch {
+            print("❌ AI model generation failed: \(error)")
+            return false
+        }
+    }
+    
+    func executeGraphQLQuery(_ query: String) async -> [String: Any]? {
+        do {
+            let pythonBridge = PythonBridge.shared
+            let result = try await pythonBridge.callAsyncFunction(
+                module: "modern_tech.graphql_api",
+                function: "execute_graphql",
+                arguments: [query]
+            )
+            
+            return result as? [String: Any]
+        } catch {
+            print("❌ GraphQL query failed: \(error)")
+            return nil
+        }
+    }
+    
+    func createCollaborationSession(projectId: String) async -> String? {
+        do {
+            let pythonBridge = PythonBridge.shared
+            let result = try await pythonBridge.callAsyncFunction(
+                module: "modern_tech.collaboration",
+                function: "create_collaboration_session",
+                arguments: [projectId, "app_controller_user"]
+            )
+            
+            return result as? String
+        } catch {
+            print("❌ Failed to create collaboration session: \(error)")
+            return nil
+        }
+    }
+    
+    func startWebXRSession(mode: String = "immersive-vr") async -> String? {
+        do {
+            let pythonBridge = PythonBridge.shared
+            let result = try await pythonBridge.callAsyncFunction(
+                module: "modern_tech.webxr_integration",
+                function: "create_xr_session",
+                arguments: [mode, "app_controller_user", [:]]
+            )
+            
+            return result as? String
+        } catch {
+            print("❌ Failed to start WebXR session: \(error)")
+            return nil
+        }
+    }
+    
     func getCacheStats() -> [String: Any] {
         let stats = smartCache.get_stats()
         return [
