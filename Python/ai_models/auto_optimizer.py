@@ -291,34 +291,135 @@ class AutoOptimizer:
             
     def suggest_improvements(
         self,
-        current_params: Dict[str, float]
-    ) -> List[str]:
+        current_params: Dict[str, float],
+        confidence_threshold: float = 0.7,
+        max_suggestions: int = 5
+    ) -> List[Dict[str, Any]]:
         """
-        Suggère des améliorations de paramètres.
+        Suggère des améliorations de paramètres avec analyse de confiance.
         
         Args:
             current_params: Paramètres actuels
+            confidence_threshold: Seuil de confiance minimum pour les suggestions
+            max_suggestions: Nombre maximum de suggestions à retourner
             
         Returns:
-            Liste de suggestions
+            Liste de suggestions avec scores de confiance et impact estimé
         """
+        try:
+            if not current_params:
+                logger.warning("Aucun paramètre fourni pour les suggestions")
+                return []
+                
+            suggestions = []
+            
+            # Prédire la performance actuelle
+            current_X = np.array([[v for v in current_params.values()]])
+            
+            if self.model is None:
+                logger.warning("Modèle non entraîné, suggestions basiques seulement")
+                return self._get_basic_suggestions(current_params)
+                
+            current_perf = self.predict(current_X)[0]
+            logger.info(f"Performance actuelle estimée: {current_perf:.3f}")
+            
+            # Tester différentes variations avec analyse d'impact
+            param_names = list(current_params.keys())
+            multipliers = [0.8, 0.9, 1.1, 1.2, 1.5, 2.0]  # Différents facteurs à tester
+            
+            for param_name in param_names:
+                current_value = current_params[param_name]
+                
+                # Éviter les modifications sur des paramètres critiques
+                if current_value == 0:
+                    continue
+                    
+                best_improvement = None
+                best_performance = current_perf
+                
+                for multiplier in multipliers:
+                    test_params = current_params.copy()
+                    new_value = current_value * multiplier
+                    
+                    # Valider la plage de valeurs
+                    if new_value < 0 or new_value > 100:  # Limites raisonnables
+                        continue
+                        
+                    test_params[param_name] = new_value
+                    
+                    try:
+                        test_X = np.array([[v for v in test_params.values()]])
+                        predicted_perf = self.predict(test_X)[0]
+                        
+                        improvement = predicted_perf - current_perf
+                        
+                        if improvement > 0.01:  # Amélioration significative
+                            # Calculer la confiance basée sur l'importance du paramètre
+                            importance = self.param_importance.get(param_name, 0.5)
+                            confidence = min(0.95, importance * (1 + improvement))
+                            
+                            if confidence >= confidence_threshold:
+                                suggestion = {
+                                    'parameter': param_name,
+                                    'current_value': current_value,
+                                    'suggested_value': new_value,
+                                    'multiplier': multiplier,
+                                    'expected_improvement': improvement,
+                                    'confidence': confidence,
+                                    'impact_score': improvement * confidence,
+                                    'reasoning': self._generate_reasoning(param_name, multiplier, improvement)
+                                }
+                                
+                                if best_improvement is None or improvement > best_improvement['expected_improvement']:
+                                    best_improvement = suggestion
+                                    
+                    except Exception as e:
+                        logger.warning(f"Erreur lors du test de {param_name}={new_value}: {e}")
+                        continue
+                
+                if best_improvement:
+                    suggestions.append(best_improvement)
+            
+            # Trier par score d'impact et retourner les meilleures suggestions
+            suggestions.sort(key=lambda x: x['impact_score'], reverse=True)
+            top_suggestions = suggestions[:max_suggestions]
+            
+            logger.info(f"Généré {len(top_suggestions)} suggestions de haute qualité")
+            return top_suggestions
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de suggestions: {e}")
+            return self._get_basic_suggestions(current_params)
+            
+    def _get_basic_suggestions(self, current_params: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Fournit des suggestions basiques quand le modèle n'est pas disponible."""
         suggestions = []
         
-        # Prédire la performance actuelle
-        current_X = np.array([[v for v in current_params.values()]])
-        current_perf = self.predict(current_X)[0]
+        for param_name, value in current_params.items():
+            if value > 0:
+                # Suggestion simple d'optimisation
+                suggestions.append({
+                    'parameter': param_name,
+                    'current_value': value,
+                    'suggested_value': value * 1.1,
+                    'multiplier': 1.1,
+                    'expected_improvement': 0.05,
+                    'confidence': 0.5,
+                    'impact_score': 0.025,
+                    'reasoning': f"Augmentation conservative de 10% pour {param_name}"
+                })
+                
+        return suggestions[:3]  # Limiter aux 3 premiers
         
-        # Tester des variations
-        for param_name, current_value in current_params.items():
-            # Tester une augmentation
-            test_params = current_params.copy()
-            test_params[param_name] *= 1.2
-            test_X = np.array([[v for v in test_params.values()]])
-            increased_perf = self.predict(test_X)[0]
-            
-            # Tester une diminution
-            test_params = current_params.copy()
-            test_params[param_name] *= 0.8
+    def _generate_reasoning(self, param_name: str, multiplier: float, improvement: float) -> str:
+        """Génère une explication pour une suggestion."""
+        direction = "augmenter" if multiplier > 1 else "réduire"
+        change_pct = abs((multiplier - 1) * 100)
+        
+        return (
+            f"Recommandé de {direction} {param_name} de {change_pct:.1f}% "
+            f"pour une amélioration estimée de {improvement:.1%}"
+        )
             test_X = np.array([[v for v in test_params.values()]])
             decreased_perf = self.predict(test_X)[0]
             

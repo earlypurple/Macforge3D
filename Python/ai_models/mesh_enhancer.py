@@ -82,7 +82,7 @@ class MeshDecoder(nn.Module):
         return x
 
 class MeshEnhancer:
-    """Classe principale pour l'amélioration des maillages."""
+    """Classe principale pour l'amélioration des maillages avec gestion d'erreurs avancée."""
     
     def __init__(self, config: Optional[MeshEnhancementConfig] = None):
         self.config = config or MeshEnhancementConfig()
@@ -101,21 +101,41 @@ class MeshEnhancer:
         except Exception as e:
             logger.warning(f"Impossible de charger les poids pré-entraînés: {e}")
             
+        logger.info(f"MeshEnhancer initialisé sur {self.config.device}")
+            
     def _prepare_mesh(
         self,
         mesh: trimesh.Trimesh
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Prépare le maillage pour le traitement."""
-        # Normaliser les vertices
-        vertices = mesh.vertices - mesh.vertices.mean(axis=0)
-        scale = np.abs(vertices).max()
-        vertices = vertices / scale
-        
-        # Convertir en tenseurs
-        vertices_tensor = torch.FloatTensor(vertices).to(self.config.device)
-        faces_tensor = torch.LongTensor(mesh.faces).to(self.config.device)
-        
-        return vertices_tensor, faces_tensor, scale
+    ) -> Tuple[torch.Tensor, torch.Tensor, float]:
+        """Prépare le maillage pour le traitement avec gestion d'erreurs."""
+        try:
+            # Normaliser les vertices
+            vertices = mesh.vertices.copy()
+            centroid = vertices.mean(axis=0)
+            vertices = vertices - centroid
+            
+            # Calculer l'échelle de manière robuste
+            scale = np.percentile(np.abs(vertices), 95)  # Utiliser le 95e percentile
+            if scale == 0:
+                scale = 1.0
+                logger.warning("Échelle zéro détectée, utilisation de l'échelle par défaut")
+            
+            vertices = vertices / scale
+            
+            # Vérifier les valeurs aberrantes
+            if np.any(np.abs(vertices) > 10):
+                logger.warning("Valeurs aberrantes détectées après normalisation")
+                vertices = np.clip(vertices, -10, 10)
+            
+            # Convertir en tenseurs
+            vertices_tensor = torch.FloatTensor(vertices).to(self.config.device)
+            faces_tensor = torch.LongTensor(mesh.faces).to(self.config.device)
+            
+            return vertices_tensor, faces_tensor, scale
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la préparation du maillage: {e}")
+            raise RuntimeError(f"Échec de la préparation du maillage: {str(e)}") from e
         
     def _compute_edge_lengths(
         self,
