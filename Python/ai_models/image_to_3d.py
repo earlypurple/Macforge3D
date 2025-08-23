@@ -10,50 +10,111 @@ from .mesh_processor import repair_mesh, scale_mesh
 def generate_3d_model_from_images(
     image_paths: list,
     output_dir: str = "Examples/generated_photogrammetry",
-    quality: str = "Default",
+    quality: str = "balanced",
+    detector_type: str = "SIFT",
     should_repair: bool = True,
     target_size_mm: float = 0.0,
+    min_matches: int = 50,
+    enhance_mesh: bool = True,
 ) -> str:
     """
-    Generates a 3D model from a list of image files using OpenCV-based photogrammetry.
-    This function is the main entry point called from the Swift application.
+    Generates a 3D model from a list of image files using enhanced OpenCV-based photogrammetry.
     
     Args:
         image_paths: A list of absolute paths to the input images.
         output_dir: The base directory where the final model will be saved.
-        quality: The desired quality level (affects point cloud density).
+        quality: Quality level - "fast", "balanced", "high"
+        detector_type: Feature detector - "SIFT", "ORB", "AKAZE"
         should_repair: Boolean flag to enable/disable mesh repair.
         target_size_mm: The target size in mm for the model's longest dimension.
+        min_matches: Minimum number of feature matches required between images
+        enhance_mesh: Whether to apply AI mesh enhancement
         
     Returns:
         A string containing the path to the generated model file, or an error message.
     """
     if not isinstance(image_paths, list) or not image_paths:
         return "Error: Input must be a non-empty list of image paths."
+    
+    if len(image_paths) < 2:
+        return "Error: At least 2 images are required for photogrammetry reconstruction."
 
     print(f"🔄 Processing {len(image_paths)} images...")
-    print(f"⚙️  Options: Quality='{quality}', Repair={should_repair}, Target Size={target_size_mm}mm")
+    print(f"⚙️  Quality: {quality}, Detector: {detector_type}, Min matches: {min_matches}")
+    print(f"🛠️  Options: Repair={should_repair}, Target Size={target_size_mm}mm, Enhance={enhance_mesh}")
 
-    # Create output directory with timestamp
+    # Validate image paths
+    valid_images = []
+    for img_path in image_paths:
+        if os.path.exists(img_path) and img_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+            valid_images.append(img_path)
+        else:
+            print(f"⚠️  Skipping invalid image: {img_path}")
+    
+    if len(valid_images) < 2:
+        return "Error: At least 2 valid images are required after filtering."
+    
+    print(f"✅ Using {len(valid_images)} valid images")
+
+    # Create output directory with enhanced timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = os.path.join(output_dir, f"reconstruction_{timestamp}")
+    run_dir = os.path.join(output_dir, f"reconstruction_{quality}_{detector_type}_{timestamp}")
     os.makedirs(run_dir, exist_ok=True)
 
-    # Generate initial point cloud
+    # Generate initial point cloud with enhanced parameters
     point_cloud_path = os.path.join(run_dir, "point_cloud.ply")
     
     try:
-        result = create_point_cloud(image_paths, point_cloud_path)
+        result = create_point_cloud(
+            valid_images, 
+            point_cloud_path, 
+            detector_type=detector_type,
+            quality=quality,
+            min_matches=min_matches
+        )
+        
         if not result:
-            return "Error: Failed to create point cloud from images."
+            return "Error: Failed to create point cloud from images. Try different quality settings or add more images."
             
         current_path = result
+        print(f"📍 Point cloud created: {current_path}")
+        
+        # Apply mesh enhancement if requested
+        if enhance_mesh:
+            try:
+                print("🎯 Applying AI mesh enhancement...")
+                from .mesh_enhancer import MeshEnhancer, MeshEnhancementConfig
+                
+                enhancer = MeshEnhancer(
+                    MeshEnhancementConfig(
+                        resolution_factor=1.2,
+                        smoothness_weight=0.3,
+                        detail_preservation=0.8
+                    )
+                )
+                
+                # Load and enhance the point cloud
+                import trimesh
+                mesh = trimesh.load(current_path)
+                if hasattr(mesh, 'vertices') and len(mesh.vertices) > 100:
+                    enhanced_mesh = enhancer.enhance_mesh(mesh)
+                    enhanced_path = os.path.join(run_dir, "model_enhanced.ply")
+                    enhanced_mesh.export(enhanced_path)
+                    current_path = enhanced_path
+                    print("✨ Mesh enhancement completed successfully")
+                else:
+                    print("⚠️  Mesh enhancement skipped - insufficient vertices")
+                    
+            except Exception as e:
+                print(f"⚠️  Mesh enhancement failed: {e}")
+                print("📋 Proceeding with original mesh...")
         
         # Post-process the mesh if needed
         if should_repair:
             repaired_path = os.path.join(run_dir, "model_repaired.obj")
             if repair_mesh(current_path, repaired_path):
                 current_path = repaired_path
+                print("🔧 Mesh repair completed successfully")
             else:
                 print("⚠️  Mesh repair failed, proceeding with original mesh")
         
@@ -61,16 +122,34 @@ def generate_3d_model_from_images(
             scaled_path = os.path.join(run_dir, "model_final.obj")
             if scale_mesh(current_path, scaled_path, target_size_mm):
                 current_path = scaled_path
+                print(f"📏 Mesh scaled to {target_size_mm}mm successfully")
             else:
                 print("⚠️  Mesh scaling failed, using unscaled version")
         
-        print(f"✅ Model generation complete! Result saved at: {current_path}")
+        # Generate metadata
+        file_size_mb = round(os.path.getsize(current_path) / (1024 * 1024), 2) if os.path.exists(current_path) else 0
+        
+        print(f"✅ Model generation complete!")
+        print(f"📊 Final model: {current_path}")
+        print(f"💾 File size: {file_size_mb} MB")
+        
         return current_path
         
     except Exception as e:
         error_msg = f"Error during model generation: {str(e)}"
         print(f"❌ {error_msg}")
-        return error_msg
+        
+        # Enhanced error categorization
+        if "insufficient" in str(e).lower():
+            suggestion = "Try using more images or reducing min_matches parameter"
+        elif "memory" in str(e).lower():
+            suggestion = "Try using 'fast' quality or fewer images"
+        elif "feature" in str(e).lower():
+            suggestion = "Try different detector_type (SIFT, ORB, or AKAZE)"
+        else:
+            suggestion = "Check image quality and ensure they show the same object from different angles"
+            
+        return f"{error_msg}. Suggestion: {suggestion}"
 
 
 if __name__ == "__main__":

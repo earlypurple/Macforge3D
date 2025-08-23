@@ -46,8 +46,44 @@ class MemoryManager:
         self._memory_usage = weakref.WeakKeyDictionary()
         self._lock = threading.Lock()
         
-    def check_memory_usage(self) -> float:
-        """Vérifie l'utilisation actuelle de la mémoire."""
+    def check_memory_usage(self) -> Tuple[float, float, Dict[str, Any]]:
+        """Vérifie l'utilisation actuelle de la mémoire avec détails avancés."""
+        try:
+            # Mémoire système
+            system_mem = psutil.virtual_memory()
+            cpu_usage = psutil.cpu_percent(interval=0.1)
+            
+            # Mémoire GPU si disponible
+            gpu_usage = 0.0
+            gpu_free = 0
+            if torch.cuda.is_available():
+                gpu_free, gpu_total = torch.cuda.mem_get_info()
+                gpu_usage = (gpu_total - gpu_free) / gpu_total
+            
+            # Statistiques détaillées
+            details = {
+                "system_memory": {
+                    "total_gb": round(system_mem.total / (1024**3), 2),
+                    "used_gb": round(system_mem.used / (1024**3), 2),
+                    "available_gb": round(system_mem.available / (1024**3), 2),
+                    "percent": system_mem.percent
+                },
+                "gpu_memory": {
+                    "total_gb": round(self.gpu_memory / (1024**3), 2) if self.gpu_memory else 0,
+                    "used_gb": round((self.gpu_memory - gpu_free) / (1024**3), 2) if self.gpu_memory else 0,
+                    "free_gb": round(gpu_free / (1024**3), 2) if gpu_free else 0,
+                    "percent": round(gpu_usage * 100, 2)
+                },
+                "cpu_usage": cpu_usage,
+                "process_count": len(psutil.pids()),
+                "disk_io": psutil.disk_io_counters()._asdict() if psutil.disk_io_counters() else {}
+            }
+            
+            return system_mem.percent / 100.0, gpu_usage, details
+            
+        except Exception as e:
+            logger.warning(f"Erreur lors de la vérification de la mémoire: {e}")
+            return 0.5, 0.0, {}
         return psutil.virtual_memory().percent / 100.0
         
     def estimate_size(self, obj: Any) -> int:
