@@ -12,7 +12,7 @@ from datetime import datetime
 import uuid
 
 # Import all modern technology modules
-from .webassembly_bridge import wasm_bridge, initialize_wasm
+from .webassembly_bridge import wasm_bridge, initialize_wasm_bridge
 from .graphql_api import graphql_api, execute_graphql
 from .collaboration import collaboration_manager, create_collaboration_session
 from .smart_cache import cache_manager, initialize_cache
@@ -124,7 +124,7 @@ class ModernTechIntegration:
         """Initialize a specific component."""
         try:
             if component_name == "webassembly":
-                return await initialize_wasm()
+                return await initialize_wasm_bridge()
             elif component_name == "graphql":
                 # GraphQL doesn't need special initialization
                 return True

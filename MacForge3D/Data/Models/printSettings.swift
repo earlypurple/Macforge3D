@@ -34,6 +34,16 @@ struct PrintSettings: Codable {
 
     // Adhesion
     var buildPlateAdhesion: String = "Skirt" // e.g., Skirt, Brim, Raft
+    
+    // Bambu Lab specific settings
+    var amsEnabled: Bool = false // Automatic Material System
+    var amsSlotUsed: Int = 1 // AMS slot (1-4)
+    var filamentType: String = "PLA" // For AMS material detection
+    var enableLidar: Bool = true // First layer inspection
+    var enableAIError: Bool = true // AI failure detection
+    var silentMode: Bool = false // Silent printing mode
+    var adaptiveLayerHeight: Bool = false // Variable layer height
+    var smoothingMode: Bool = false // For TPU and flexible materials
 
     // A static default instance for convenience.
     static var `default`: PrintSettings {
