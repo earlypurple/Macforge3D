@@ -371,25 +371,31 @@ class AdvancedCacheOptimizer:
         return self._evict_items(space_to_free)
     
     def _evict_items(self, space_needed: int) -> bool:
-        """Évince des éléments pour libérer de l'espace."""
+        """Évince des éléments pour libérer de l'espace avec stratégie intelligente."""
         evicted_space = 0
         evicted_count = 0
         
-        # Stratégie d'éviction intelligente: LRU avec considération de priorité
+        # Stratégie d'éviction ML-enhanced: LRU avec prédiction d'utilisation future
         items_by_score = []
         current_time = time.time()
         
         for key, item in self._cache.items():
-            # Score basé sur: temps depuis dernier accès, fréquence, priorité
+            # Prédire la probabilité d'accès futur
+            future_access_prob = self._access_predictor.predict_future_access(key, 3600)
+            
+            # Score composite avec plusieurs facteurs
             time_since_access = current_time - item.last_access
             access_frequency = self._access_predictor.get_access_frequency(key, 3600)
+            size_penalty = np.log(max(item.size_bytes, 1)) / 20.0  # Pénalité pour les gros items
             
             # Score plus bas = plus susceptible d'être évincé
             eviction_score = (
-                time_since_access * 0.4 +
-                (1 / max(access_frequency, 0.001)) * 0.3 +
-                (1 / max(item.priority, 1)) * 0.2 +
-                (1 / max(item.access_count, 1)) * 0.1
+                time_since_access * 0.35 +
+                (1 / max(access_frequency, 0.001)) * 0.25 +
+                (1 / max(item.priority, 1)) * 0.15 +
+                (1 / max(item.access_count, 1)) * 0.10 +
+                (1 / max(future_access_prob, 0.001)) * 0.10 +
+                size_penalty * 0.05
             )
             
             items_by_score.append((eviction_score, key, item))
@@ -397,14 +403,27 @@ class AdvancedCacheOptimizer:
         # Trier par score d'éviction (descendant)
         items_by_score.sort(reverse=True)
         
-        # Évincer les éléments
+        # Éviction en plusieurs passes pour optimiser
+        # Passe 1: Évincer les items avec faible probabilité d'accès futur
         for score, key, item in items_by_score:
             if evicted_space >= space_needed:
                 break
                 
-            evicted_space += item.size_bytes
-            evicted_count += 1
-            del self._cache[key]
+            future_prob = self._access_predictor.predict_future_access(key, 1800)  # 30 min
+            if future_prob < 0.1:  # Très faible probabilité d'accès
+                evicted_space += item.size_bytes
+                evicted_count += 1
+                del self._cache[key]
+        
+        # Passe 2: Si pas assez d'espace, éviction LRU classique
+        if evicted_space < space_needed:
+            for score, key, item in items_by_score:
+                if evicted_space >= space_needed or key not in self._cache:
+                    break
+                    
+                evicted_space += item.size_bytes
+                evicted_count += 1
+                del self._cache[key]
             
         self._metrics['evictions'] += evicted_count
         logger.debug(f"Évincé {evicted_count} éléments, libéré {evicted_space} bytes")
@@ -604,3 +623,61 @@ class AccessPredictor:
         ]
         
         return len(recent_accesses) / window_seconds
+    
+    def predict_future_access(self, key: str, prediction_window: float = 3600) -> float:
+        """
+        Prédit la probabilité d'accès futur basée sur les patterns historiques.
+        
+        Args:
+            key: Clé du cache
+            prediction_window: Fenêtre de prédiction en secondes
+            
+        Returns:
+            Probabilité d'accès entre 0 et 1
+        """
+        if key not in self.access_history or len(self.access_history[key]) < 2:
+            return 0.1  # Probabilité par défaut pour nouveaux items
+            
+        accesses = self.access_history[key]
+        current_time = time.time()
+        
+        # Analyser les patterns temporels
+        if len(accesses) >= 3:
+            # Calculer les intervalles entre accès
+            intervals = [accesses[i] - accesses[i-1] for i in range(1, len(accesses))]
+            
+            if intervals:
+                # Moyenne et variance des intervalles
+                avg_interval = np.mean(intervals)
+                interval_variance = np.var(intervals)
+                
+                # Temps depuis dernier accès
+                time_since_last = current_time - accesses[-1]
+                
+                # Prédiction basée sur la régularité des accès
+                if avg_interval > 0:
+                    # Si les accès sont réguliers (faible variance)
+                    regularity_score = 1.0 / (1.0 + interval_variance / max(avg_interval, 1))
+                    
+                    # Probabilité basée sur quand le prochain accès est attendu
+                    expected_next_access = accesses[-1] + avg_interval
+                    time_to_expected = abs(expected_next_access - current_time)
+                    
+                    # Plus on s'approche du moment attendu, plus la probabilité augmente
+                    temporal_score = max(0, 1.0 - (time_to_expected / prediction_window))
+                    
+                    # Fréquence récente
+                    frequency_score = min(1.0, self.get_access_frequency(key, prediction_window * 2))
+                    
+                    # Score composite
+                    probability = (
+                        regularity_score * 0.4 +
+                        temporal_score * 0.4 +
+                        frequency_score * 0.2
+                    )
+                    
+                    return min(1.0, max(0.0, probability))
+        
+        # Fallback: probabilité basée uniquement sur la fréquence récente
+        frequency = self.get_access_frequency(key, prediction_window)
+        return min(1.0, frequency * prediction_window / 10.0)  # Normalisation heuristique
