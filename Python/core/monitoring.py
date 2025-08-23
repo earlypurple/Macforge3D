@@ -14,9 +14,97 @@ import numpy as np
 from collections import deque
 import GPUtil
 
-# Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class TrendAnalyzer:
+    """Analyseur de tendances pour les métriques de performance."""
+    
+    def __init__(self):
+        self.window_size = 20
+        
+    def analyze_trend(self, values: List[float]) -> Dict[str, Any]:
+        """Analyse la tendance d'une série de valeurs."""
+        if len(values) < 3:
+            return {"trend": "insufficient_data"}
+            
+        # Calcul de la tendance linéaire
+        x = np.arange(len(values))
+        slope, intercept = np.polyfit(x, values, 1)
+        
+        # Classification de la tendance
+        if abs(slope) < 0.1:
+            trend_type = "stable"
+        elif slope > 0:
+            trend_type = "increasing"
+        else:
+            trend_type = "decreasing"
+            
+        return {
+            "trend": trend_type,
+            "slope": slope,
+            "strength": abs(slope),
+            "r_squared": np.corrcoef(x, values)[0, 1] ** 2
+        }
+
+class PerformancePredictor:
+    """Prédicteur de performance basé sur l'historique."""
+    
+    def __init__(self):
+        self.min_data_points = 10
+        
+    def predict_next_values(self, values: List[float], steps_ahead: int = 5) -> List[float]:
+        """Prédit les prochaines valeurs basées sur la tendance."""
+        if len(values) < self.min_data_points:
+            return [values[-1]] * steps_ahead if values else [0] * steps_ahead
+            
+        # Prédiction basée sur la régression linéaire
+        x = np.arange(len(values))
+        slope, intercept = np.polyfit(x, values, 1)
+        
+        predictions = []
+        for i in range(1, steps_ahead + 1):
+            next_x = len(values) + i
+            prediction = slope * next_x + intercept
+            predictions.append(max(0, prediction))  # Éviter les valeurs négatives
+            
+        return predictions
+
+class SmartAlertManager:
+    """Gestionnaire d'alertes intelligent avec réduction de bruit."""
+    
+    def __init__(self):
+        self.alert_history = []
+        self.suppression_time = 300  # 5 minutes
+        
+    def should_alert(self, alert_type: str, severity: str) -> bool:
+        """Détermine si une alerte doit être envoyée."""
+        now = datetime.now()
+        
+        # Vérifier les alertes récentes du même type
+        recent_alerts = [
+            a for a in self.alert_history
+            if a['type'] == alert_type and 
+            (now - a['timestamp']).total_seconds() < self.suppression_time
+        ]
+        
+        # Supprimer les alertes si trop récentes
+        return len(recent_alerts) == 0
+        
+    def record_alert(self, alert_type: str, severity: str):
+        """Enregistre une alerte envoyée."""
+        self.alert_history.append({
+            'type': alert_type,
+            'severity': severity,
+            'timestamp': datetime.now()
+        })
+        
+        # Nettoyer l'historique ancien
+        cutoff = datetime.now() - timedelta(hours=1)
+        self.alert_history = [
+            a for a in self.alert_history
+            if a['timestamp'] > cutoff
+        ]
 
 @dataclass
 class SystemMetrics:
@@ -107,7 +195,7 @@ class MetricsBuffer:
         return alerts
 
 class PerformanceMonitor:
-    """Moniteur de performances temps réel."""
+    """Moniteur de performances temps réel avec capacités avancées."""
     
     def __init__(
         self,
@@ -120,7 +208,7 @@ class PerformanceMonitor:
         self.running = False
         self.monitoring_thread = None
         
-        # Seuils d'alerte
+        # Seuils d'alerte adaptatifs
         self.thresholds = {
             'cpu_percent': 90.0,
             'memory_percent': 85.0,
@@ -128,6 +216,186 @@ class PerformanceMonitor:
             'io_write_bytes': 100.0,  # MB/s
             'processing_time': 300.0  # secondes
         }
+        
+        # Métriques avancées
+        self._advanced_metrics = {
+            'cpu_load_1min': [],
+            'cpu_load_5min': [],
+            'cpu_freq': [],
+            'memory_swap': [],
+            'network_io': [],
+            'process_metrics': {},
+            'thermal_state': [],
+            'power_consumption': []
+        }
+        
+        # Prédictions et tendances
+        self._trend_analyzer = TrendAnalyzer()
+        self._performance_predictor = PerformancePredictor()
+        
+        # Système d'alerte intelligent
+        self._alert_manager = SmartAlertManager()
+        
+    def get_advanced_metrics(self) -> Dict[str, Any]:
+        """Retourne les métriques avancées du système."""
+        try:
+            advanced = {}
+            
+            # Métriques CPU avancées
+            cpu_stats = psutil.cpu_stats()
+            cpu_freq = psutil.cpu_freq()
+            load_avg = os.getloadavg() if hasattr(os, 'getloadavg') else (0, 0, 0)
+            
+            advanced['cpu'] = {
+                'cores_logical': psutil.cpu_count(logical=True),
+                'cores_physical': psutil.cpu_count(logical=False),
+                'frequency_current': cpu_freq.current if cpu_freq else 0,
+                'frequency_max': cpu_freq.max if cpu_freq else 0,
+                'load_avg_1min': load_avg[0],
+                'load_avg_5min': load_avg[1],
+                'load_avg_15min': load_avg[2],
+                'context_switches': cpu_stats.ctx_switches,
+                'interrupts': cpu_stats.interrupts,
+                'soft_interrupts': cpu_stats.soft_interrupts
+            }
+            
+            # Métriques mémoire avancées
+            memory = psutil.virtual_memory()
+            swap = psutil.swap_memory()
+            
+            advanced['memory'] = {
+                'total_gb': round(memory.total / (1024**3), 2),
+                'available_gb': round(memory.available / (1024**3), 2),
+                'used_gb': round(memory.used / (1024**3), 2),
+                'free_gb': round(memory.free / (1024**3), 2),
+                'cached_gb': round(memory.cached / (1024**3), 2) if hasattr(memory, 'cached') else 0,
+                'buffers_gb': round(memory.buffers / (1024**3), 2) if hasattr(memory, 'buffers') else 0,
+                'swap_total_gb': round(swap.total / (1024**3), 2),
+                'swap_used_gb': round(swap.used / (1024**3), 2),
+                'swap_free_gb': round(swap.free / (1024**3), 2)
+            }
+            
+            # Métriques réseau
+            net_io = psutil.net_io_counters()
+            if net_io:
+                advanced['network'] = {
+                    'bytes_sent': net_io.bytes_sent,
+                    'bytes_recv': net_io.bytes_recv,
+                    'packets_sent': net_io.packets_sent,
+                    'packets_recv': net_io.packets_recv,
+                    'errin': net_io.errin,
+                    'errout': net_io.errout
+                }
+            
+            # Métriques disque avancées
+            disk_usage = psutil.disk_usage('/')
+            disk_io = psutil.disk_io_counters()
+            
+            advanced['disk'] = {
+                'total_gb': round(disk_usage.total / (1024**3), 2),
+                'used_gb': round(disk_usage.used / (1024**3), 2),
+                'free_gb': round(disk_usage.free / (1024**3), 2),
+                'read_count': disk_io.read_count if disk_io else 0,
+                'write_count': disk_io.write_count if disk_io else 0,
+                'read_bytes': disk_io.read_bytes if disk_io else 0,
+                'write_bytes': disk_io.write_bytes if disk_io else 0
+            }
+            
+            # Métriques processus
+            process_count = len(psutil.pids())
+            running_processes = len([p for p in psutil.process_iter(['status']) 
+                                   if p.info['status'] == psutil.STATUS_RUNNING])
+            
+            advanced['processes'] = {
+                'total_count': process_count,
+                'running_count': running_processes,
+                'sleeping_count': process_count - running_processes
+            }
+            
+            # Métriques thermiques (si disponible)
+            try:
+                sensors = psutil.sensors_temperatures()
+                if sensors:
+                    temps = []
+                    for name, entries in sensors.items():
+                        for entry in entries:
+                            temps.append(entry.current)
+                    if temps:
+                        advanced['thermal'] = {
+                            'avg_temp': round(np.mean(temps), 1),
+                            'max_temp': round(max(temps), 1),
+                            'min_temp': round(min(temps), 1)
+                        }
+            except:
+                pass
+            
+            return advanced
+            
+        except Exception as e:
+            logger.warning(f"Erreur lors de la collecte des métriques avancées: {e}")
+            return {}
+    
+    def predict_performance_trend(self, minutes_ahead: int = 15) -> Dict[str, Any]:
+        """Prédit les tendances de performance pour les prochaines minutes."""
+        try:
+            if len(self.metrics_buffer.system_metrics) < 10:
+                return {"error": "Pas assez de données historiques"}
+            
+            recent_metrics = self.metrics_buffer.system_metrics[-30:]  # 30 dernières mesures
+            
+            # Extraire les séries temporelles
+            cpu_series = [m.cpu_percent for m in recent_metrics]
+            memory_series = [m.memory_percent for m in recent_metrics]
+            
+            # Prédiction simple basée sur la tendance linéaire
+            predictions = {}
+            
+            # Prédiction CPU
+            if len(cpu_series) >= 5:
+                cpu_trend = np.polyfit(range(len(cpu_series)), cpu_series, 1)[0]
+                cpu_prediction = cpu_series[-1] + (cpu_trend * minutes_ahead)
+                predictions['cpu'] = {
+                    'current': round(cpu_series[-1], 1),
+                    'predicted': round(max(0, min(100, cpu_prediction)), 1),
+                    'trend': 'increasing' if cpu_trend > 0.1 else 'decreasing' if cpu_trend < -0.1 else 'stable',
+                    'confidence': min(100, len(cpu_series) * 10)  # Confiance basée sur l'historique
+                }
+            
+            # Prédiction mémoire
+            if len(memory_series) >= 5:
+                memory_trend = np.polyfit(range(len(memory_series)), memory_series, 1)[0]
+                memory_prediction = memory_series[-1] + (memory_trend * minutes_ahead)
+                predictions['memory'] = {
+                    'current': round(memory_series[-1], 1),
+                    'predicted': round(max(0, min(100, memory_prediction)), 1),
+                    'trend': 'increasing' if memory_trend > 0.1 else 'decreasing' if memory_trend < -0.1 else 'stable',
+                    'confidence': min(100, len(memory_series) * 10)
+                }
+            
+            # Alertes prédictives
+            alerts = []
+            if 'cpu' in predictions and predictions['cpu']['predicted'] > 85:
+                alerts.append({
+                    'type': 'cpu_overload_predicted',
+                    'severity': 'warning',
+                    'message': f"Surcharge CPU prédite dans {minutes_ahead} minutes: {predictions['cpu']['predicted']}%"
+                })
+            
+            if 'memory' in predictions and predictions['memory']['predicted'] > 90:
+                alerts.append({
+                    'type': 'memory_exhaustion_predicted',
+                    'severity': 'critical',
+                    'message': f"Épuisement mémoire prédit dans {minutes_ahead} minutes: {predictions['memory']['predicted']}%"
+                })
+            
+            predictions['alerts'] = alerts
+            predictions['prediction_time'] = datetime.now().isoformat()
+            
+            return predictions
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la prédiction: {e}")
+            return {"error": str(e)}
         
     def start(self):
         """Démarre le monitoring."""

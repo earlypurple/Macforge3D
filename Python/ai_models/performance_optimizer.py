@@ -357,8 +357,34 @@ class PerformanceOptimizer:
     
     def __init__(self, cache_manager: CacheManager):
         self.cache_manager = cache_manager
-        self.thread_pool = ThreadPoolExecutor()
-        self.process_pool = ProcessPoolExecutor()
+        
+        # Configuration optimisée des pools d'exécution
+        cpu_count = os.cpu_count() or 4
+        self.thread_pool = ThreadPoolExecutor(
+            max_workers=min(cpu_count * 2, 32),  # Optimisé pour I/O
+            thread_name_prefix="perf_thread"
+        )
+        self.process_pool = ProcessPoolExecutor(
+            max_workers=min(cpu_count, 16),  # Optimisé pour CPU
+            mp_context=None  # Utilise le contexte par défaut
+        )
+        
+        # Statistiques de performance
+        self._performance_stats = {
+            'total_processed': 0,
+            'total_time': 0.0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'memory_optimizations': 0
+        }
+        
+        # Configuration adaptative
+        self._adaptive_config = {
+            'auto_adjust_workers': True,
+            'memory_threshold': 0.85,  # 85% de RAM
+            'cpu_threshold': 0.90,     # 90% de CPU
+            'last_adjustment': time.time()
+        }
         
     def _validate_mesh(self, mesh: trimesh.Trimesh) -> bool:
         """Valide un maillage d'entrée."""
@@ -764,6 +790,59 @@ class PerformanceOptimizer:
             logger.error(f"Erreur lors du traitement en lot: {e}")
             raise RuntimeError(f"Échec du traitement en lot des maillages: {str(e)}") from e
             
+    def _adaptive_optimize(self):
+        """Optimisation adaptative basée sur les conditions actuelles du système."""
+        current_time = time.time()
+        
+        # Éviter les ajustements trop fréquents
+        if current_time - self._adaptive_config['last_adjustment'] < 30:
+            return
+            
+        if not self._adaptive_config['auto_adjust_workers']:
+            return
+            
+        try:
+            # Métriques système actuelles
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory_info = psutil.virtual_memory()
+            memory_percent = memory_info.percent / 100.0
+            
+            # Ajustement du nombre de workers
+            if memory_percent > self._adaptive_config['memory_threshold']:
+                # Réduire les workers pour limiter l'usage mémoire
+                current_threads = self.thread_pool._max_workers
+                current_processes = self.process_pool._max_workers
+                
+                if current_threads > 2:
+                    self.thread_pool._max_workers = max(2, current_threads - 2)
+                    logger.info(f"Réduit thread workers: {current_threads} -> {self.thread_pool._max_workers}")
+                    
+                if current_processes > 1:
+                    self.process_pool._max_workers = max(1, current_processes - 1)
+                    logger.info(f"Réduit process workers: {current_processes} -> {self.process_pool._max_workers}")
+                    
+            elif cpu_percent < 50 and memory_percent < 0.6:
+                # Augmenter les workers si ressources disponibles
+                cpu_count = os.cpu_count() or 4
+                current_threads = self.thread_pool._max_workers
+                current_processes = self.process_pool._max_workers
+                
+                max_threads = min(cpu_count * 2, 32)
+                max_processes = min(cpu_count, 16)
+                
+                if current_threads < max_threads:
+                    self.thread_pool._max_workers = min(max_threads, current_threads + 2)
+                    logger.info(f"Augmenté thread workers: {current_threads} -> {self.thread_pool._max_workers}")
+                    
+                if current_processes < max_processes:
+                    self.process_pool._max_workers = min(max_processes, current_processes + 1)
+                    logger.info(f"Augmenté process workers: {current_processes} -> {self.process_pool._max_workers}")
+            
+            self._adaptive_config['last_adjustment'] = current_time
+            
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'optimisation adaptative: {e}")
+
     def get_performance_stats(self) -> Dict[str, Any]:
         """
         Retourne les statistiques de performance.
@@ -772,6 +851,9 @@ class PerformanceOptimizer:
             Dictionnaire contenant les métriques de performance
         """
         try:
+            # Optimisation adaptative avant de collecter les stats
+            self._adaptive_optimize()
+            
             # Obtenir les informations système
             cpu_count = os.cpu_count() or 1
             memory_info = psutil.virtual_memory()
@@ -810,61 +892,136 @@ class PerformanceOptimizer:
         Returns:
             Statistiques d'optimisation mémoire
         """
-        logger.info("Début de l'optimisation mémoire...")
+        logger.info("Début de l'optimisation mémoire avancée...")
         
+        start_time = time.time()
         stats_before = {
             "memory_before_gb": round(psutil.virtual_memory().used / (1024**3), 2),
             "memory_percent_before": psutil.virtual_memory().percent
         }
         
         try:
-            # Forcer le garbage collection
-            collected = gc.collect()
-            logger.info(f"Garbage collection: {collected} objets collectés")
+            # Phase 1: Garbage collection agressif
+            collected_objects = []
+            for generation in range(3):  # 3 générations GC
+                collected = gc.collect(generation)
+                collected_objects.append(collected)
+                logger.info(f"GC génération {generation}: {collected} objets collectés")
             
-            # Nettoyer les caches PyTorch
+            total_collected = sum(collected_objects)
+            
+            # Phase 2: Optimisation GPU si disponible
+            gpu_memory_freed = 0
             if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                logger.info("Cache GPU PyTorch vidé")
+                try:
+                    # Mesurer mémoire GPU avant
+                    torch.cuda.synchronize()
+                    gpu_before = torch.cuda.memory_allocated()
+                    
+                    # Nettoyer le cache GPU de manière agressive
+                    torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()
+                    torch.cuda.synchronize()
+                    
+                    # Optimiser les pools de mémoire
+                    if hasattr(torch.cuda, 'memory_stats'):
+                        stats = torch.cuda.memory_stats()
+                        if stats.get('reserved_bytes.small_pool.current', 0) > 0:
+                            torch.cuda.memory._record_memory_history(enabled=False)
+                    
+                    gpu_after = torch.cuda.memory_allocated()
+                    gpu_memory_freed = (gpu_before - gpu_after) / (1024**3)
+                    logger.info(f"Mémoire GPU libérée: {gpu_memory_freed:.2f} GB")
+                except Exception as e:
+                    logger.warning(f"Erreur optimisation GPU: {e}")
             
-            # Nettoyer le cache interne si disponible
-            if hasattr(self, 'cache_manager') and hasattr(self.cache_manager, 'cleanup_memory'):
-                self.cache_manager.cleanup_memory()
-                logger.info("Cache interne nettoyé")
+            # Phase 3: Optimisation cache interne
+            cache_items_cleaned = 0
+            if hasattr(self, 'cache_manager'):
+                try:
+                    if hasattr(self.cache_manager, 'cleanup_memory'):
+                        cache_items_cleaned = self.cache_manager.cleanup_memory()
+                    elif hasattr(self.cache_manager, '_memory_cache'):
+                        initial_size = len(self.cache_manager._memory_cache)
+                        # Nettoyer les entrées faibles
+                        self.cache_manager._memory_cache.clear()
+                        cache_items_cleaned = initial_size
+                    logger.info(f"Cache interne: {cache_items_cleaned} éléments nettoyés")
+                except Exception as e:
+                    logger.warning(f"Erreur nettoyage cache: {e}")
             
-            # Optimiser les variables globales numpy/torch
+            # Phase 4: Optimisation des modules système
             import sys
-            modules_to_check = ['numpy', 'torch', 'trimesh']
+            modules_optimized = 0
+            modules_to_check = ['numpy', 'torch', 'trimesh', 'sklearn', 'matplotlib', 'cv2']
+            
             for module_name in modules_to_check:
                 if module_name in sys.modules:
-                    module = sys.modules[module_name]
-                    if hasattr(module, '__dict__'):
-                        # Nettoyer les caches internes des modules
-                        for attr_name in list(module.__dict__.keys()):
-                            if attr_name.startswith('_cache') or attr_name.endswith('_cache'):
-                                try:
-                                    delattr(module, attr_name)
-                                except:
-                                    pass
+                    try:
+                        module = sys.modules[module_name]
+                        cleaned_attrs = 0
+                        
+                        if hasattr(module, '__dict__'):
+                            # Nettoyer tous les types de caches
+                            cache_patterns = ['_cache', 'cache_', '__cache__', '_memo', 'memo_', '_lru_cache']
+                            for attr_name in list(module.__dict__.keys()):
+                                if any(pattern in attr_name.lower() for pattern in cache_patterns):
+                                    try:
+                                        attr = getattr(module, attr_name)
+                                        if hasattr(attr, 'clear'):
+                                            attr.clear()
+                                        elif hasattr(attr, 'cache_clear'):
+                                            attr.cache_clear()
+                                        else:
+                                            delattr(module, attr_name)
+                                        cleaned_attrs += 1
+                                    except:
+                                        pass
+                        
+                        if cleaned_attrs > 0:
+                            modules_optimized += 1
+                            logger.debug(f"Module {module_name}: {cleaned_attrs} caches nettoyés")
+                            
+                    except Exception as e:
+                        logger.debug(f"Erreur optimisation module {module_name}: {e}")
             
-            # Attendre que le nettoyage soit effectif
+            # Phase 5: Optimisation système avancée
+            try:
+                # Défragmentation mémoire pour certains OS
+                if hasattr(os, 'nice'):
+                    original_nice = os.nice(0)
+                    os.nice(-1)  # Augmenter la priorité temporairement
+                    time.sleep(0.05)  # Courte pause pour l'optimisation
+                    os.nice(original_nice - os.nice(0))
+            except:
+                pass
+            
+            # Forcer synchronisation mémoire
             time.sleep(0.1)
             
+            # Statistiques finales
             stats_after = {
                 "memory_after_gb": round(psutil.virtual_memory().used / (1024**3), 2),
                 "memory_percent_after": psutil.virtual_memory().percent
             }
             
             memory_freed = stats_before["memory_before_gb"] - stats_after["memory_after_gb"]
+            optimization_time = time.time() - start_time
+            
+            # Mettre à jour les stats de performance
+            self._performance_stats['memory_optimizations'] += 1
             
             optimization_stats = {
                 **stats_before,
                 **stats_after,
                 "memory_freed_gb": round(memory_freed, 2),
-                "objects_collected": collected,
-                "optimization_time": time.time(),
-                "success": True
+                "gpu_memory_freed_gb": round(gpu_memory_freed, 2),
+                "objects_collected": total_collected,
+                "cache_items_cleaned": cache_items_cleaned,
+                "modules_optimized": modules_optimized,
+                "optimization_time_ms": round(optimization_time * 1000, 2),
+                "success": True,
+                "efficiency_score": round(max(0, memory_freed / max(0.01, optimization_time)), 2)
             }
             
             logger.info(f"Optimisation mémoire terminée. Mémoire libérée: {memory_freed:.2f} GB")
