@@ -391,8 +391,8 @@ class CacheManager:
 class PerformanceOptimizer:
     """Optimiseur de performances pour le traitement 3D."""
     
-    def __init__(self, cache_manager: CacheManager):
-        self.cache_manager = cache_manager
+    def __init__(self, cache_manager: Optional[CacheManager] = None):
+        self.cache_manager = cache_manager or CacheManager()
         
         # Configuration optimisée des pools d'exécution
         cpu_count = os.cpu_count() or 4
@@ -564,19 +564,13 @@ class PerformanceOptimizer:
             if progress_callback:
                 progress_callback(0.4)
                 
-            # Simplification du maillage avec gestion d'erreurs
-            try:
-                if target_faces < len(mesh.faces):
-                    optimized = optimized.simplify_quadratic_decimation(target_faces)
-                    logger.info(f"Simplification terminée: {len(optimized.faces)} faces")
-            except Exception as e:
-                logger.warning(f"Échec de la simplification quadratique: {e}")
-                # Fallback vers une simplification plus basique
-                try:
-                    optimized = optimized.simplify_quadric_decimation(target_faces)
-                except Exception as e2:
-                    logger.warning(f"Échec de la simplification de fallback: {e2}")
-                    # Continuer sans simplification
+            # Simplification du maillage avec stratégies adaptatives
+            if target_faces < len(mesh.faces):
+                simplification_success = self._apply_adaptive_simplification(
+                    optimized, target_faces, progress_callback
+                )
+                if not simplification_success:
+                    logger.info("Simplification ignorée - maillage conservé tel quel")
                     
             if progress_callback:
                 progress_callback(0.6)
@@ -1209,6 +1203,63 @@ class PerformanceOptimizer:
                 logger.warning("Simplification échouée, maillage conservé tel quel")
         
         return processed
+    
+    def _apply_adaptive_simplification(
+        self, 
+        mesh: trimesh.Trimesh, 
+        target_faces: int,
+        progress_callback: Optional[callable] = None
+    ) -> bool:
+        """
+        Applique une simplification adaptative avec plusieurs stratégies.
+        
+        Returns:
+            bool: True si la simplification a réussi, False sinon
+        """
+        try:
+            original_faces = len(mesh.faces)
+            
+            # Stratégie 1: Simplification quadratique (plus précise)
+            try:
+                mesh_simplified = mesh.simplify_quadratic_decimation(target_faces)
+                if len(mesh_simplified.faces) <= target_faces * 1.1:  # Tolérance de 10%
+                    mesh.vertices = mesh_simplified.vertices
+                    mesh.faces = mesh_simplified.faces
+                    logger.info(f"Simplification quadratique réussie: {original_faces} → {len(mesh.faces)} faces")
+                    return True
+            except Exception as e:
+                logger.debug(f"Simplification quadratique échouée: {e}")
+            
+            # Stratégie 2: Simplification quadric (fallback)
+            try:
+                mesh_simplified = mesh.simplify_quadric_decimation(target_faces)
+                if len(mesh_simplified.faces) <= target_faces * 1.2:  # Tolérance plus large
+                    mesh.vertices = mesh_simplified.vertices
+                    mesh.faces = mesh_simplified.faces
+                    logger.info(f"Simplification quadric réussie: {original_faces} → {len(mesh.faces)} faces")
+                    return True
+            except Exception as e:
+                logger.debug(f"Simplification quadric échouée: {e}")
+            
+            # Stratégie 3: Simplification progressive (plus conservative)
+            if target_faces < original_faces * 0.8:  # Seulement si réduction significative
+                try:
+                    reduction_factor = target_faces / original_faces
+                    intermediate_target = int(original_faces * (reduction_factor + 0.2))
+                    mesh_simplified = mesh.simplify_quadric_decimation(intermediate_target)
+                    mesh.vertices = mesh_simplified.vertices
+                    mesh.faces = mesh_simplified.faces
+                    logger.info(f"Simplification progressive: {original_faces} → {len(mesh.faces)} faces")
+                    return True
+                except Exception as e:
+                    logger.debug(f"Simplification progressive échouée: {e}")
+            
+            logger.warning(f"Toutes les stratégies de simplification ont échoué pour {original_faces} → {target_faces} faces")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Erreur inattendue dans la simplification adaptative: {e}")
+            return False
             
     def cleanup(self):
         """Nettoie les ressources utilisées par l'optimiseur."""

@@ -495,7 +495,7 @@ class MeshEnhancer:
         threshold: float
     ) -> torch.Tensor:
         """
-        Détecte les vertices sur les arêtes importantes du maillage.
+        Détecte les vertices sur les arêtes importantes du maillage avec optimisation vectorielle.
         
         Args:
             vertices: Positions des vertices
@@ -509,38 +509,48 @@ class MeshEnhancer:
         n_vertices = vertices.shape[0]
         edge_mask = torch.zeros(n_vertices, dtype=torch.bool, device=vertices.device)
         
-        # Calculer la courbure moyenne pour chaque vertex
-        for vertex_idx in range(n_vertices):
-            if vertex_idx in adjacency_dict:
-                neighbors = adjacency_dict[vertex_idx]
-                if len(neighbors) >= 3:
-                    # Calculer les vecteurs vers les voisins
-                    vertex_pos = vertices[vertex_idx]
-                    neighbor_positions = vertices[neighbors]
+        # Créer un mapping vertex -> faces pour optimiser la recherche
+        vertex_to_faces = {v: [] for v in range(n_vertices)}
+        for face_idx, face in enumerate(faces):
+            for vertex_idx in face:
+                vertex_to_faces[vertex_idx.item()].append(face_idx)
+        
+        # Calculer toutes les normales de faces d'un coup
+        v0 = vertices[faces[:, 0]]
+        v1 = vertices[faces[:, 1]]
+        v2 = vertices[faces[:, 2]]
+        
+        face_normals = torch.cross(v1 - v0, v2 - v0)
+        face_normals = torch.nn.functional.normalize(face_normals, dim=1)
+        
+        # Analyser chaque vertex en batch pour l'efficacité
+        batch_size = min(1000, n_vertices)
+        
+        for start_idx in range(0, n_vertices, batch_size):
+            end_idx = min(start_idx + batch_size, n_vertices)
+            
+            for vertex_idx in range(start_idx, end_idx):
+                if vertex_idx in adjacency_dict and len(adjacency_dict[vertex_idx]) >= 3:
+                    adjacent_faces = vertex_to_faces[vertex_idx]
                     
-                    # Calculer les normales des faces adjacentes
-                    face_normals = []
-                    for face in faces:
-                        if vertex_idx in face:
-                            v0, v1, v2 = vertices[face[0]], vertices[face[1]], vertices[face[2]]
-                            normal = torch.cross(v1 - v0, v2 - v0)
-                            normal = torch.nn.functional.normalize(normal, dim=0)
-                            face_normals.append(normal)
-                    
-                    if len(face_normals) >= 2:
-                        # Calculer l'angle entre les normales
-                        angles = []
-                        for i in range(len(face_normals)):
-                            for j in range(i+1, len(face_normals)):
-                                dot_product = torch.dot(face_normals[i], face_normals[j])
-                                dot_product = torch.clamp(dot_product, -1.0, 1.0)
-                                angle = torch.acos(dot_product)
-                                angles.append(angle)
+                    if len(adjacent_faces) >= 2:
+                        # Obtenir les normales des faces adjacentes
+                        adjacent_normals = face_normals[adjacent_faces]
                         
-                        if angles:
-                            max_angle = max(angles)
-                            if max_angle > threshold:
-                                edge_mask[vertex_idx] = True
+                        # Calculer l'angle maximum entre les normales de manière vectorielle
+                        if len(adjacent_normals) >= 2:
+                            # Calculer tous les produits scalaires
+                            dot_products = torch.mm(adjacent_normals, adjacent_normals.t())
+                            dot_products = torch.clamp(dot_products, -1.0, 1.0)
+                            
+                            # Obtenir l'angle maximum (ignorer la diagonale)
+                            mask = ~torch.eye(len(adjacent_normals), dtype=torch.bool, device=vertices.device)
+                            if mask.sum() > 0:
+                                min_dot = torch.min(dot_products[mask])
+                                max_angle = torch.acos(min_dot)
+                                
+                                if max_angle > threshold:
+                                    edge_mask[vertex_idx] = True
         
         return edge_mask
     

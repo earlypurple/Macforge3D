@@ -104,29 +104,56 @@ class GlobalPerformanceOrchestrator:
         start_time = time.time()
         results = {}
         
-        logger.info("Début de l'optimisation globale de tous les modules...")
+        logger.info("Début de l'optimisation globale adaptative de tous les modules...")
         
         try:
             with self.lock:
-                # 1. Optimisation mémoire
-                memory_result = self._optimize_memory()
-                results['memory'] = memory_result
+                # Phase 1: Diagnostic initial du système
+                initial_metrics = self._collect_system_metrics()
+                logger.info(f"Métriques initiales: CPU={initial_metrics.get('cpu_usage', 0):.1f}%, Mémoire={initial_metrics.get('memory_usage', 0):.1f}%")
                 
-                # 2. Optimisation cache
-                cache_result = self._optimize_cache()
-                results['cache'] = cache_result
+                # Phase 2: Optimisations par ordre de priorité intelligente
+                optimization_sequence = self._determine_optimization_sequence(initial_metrics)
+                total_improvement = 0.0
                 
-                # 3. Optimisation ressources
-                resource_result = self._optimize_resources()
-                results['resources'] = resource_result
-                
-                # 4. Optimisation ML/Auto
-                ml_result = self._optimize_ml_parameters()
-                results['ml_auto'] = ml_result
-                
-                # 5. Optimisation monitoring
-                monitoring_result = self._optimize_monitoring()
-                results['monitoring'] = monitoring_result
+                for phase_name, optimizations in optimization_sequence.items():
+                    logger.info(f"--- Phase {phase_name} ---")
+                    
+                    for opt_name in optimizations:
+                        try:
+                            if opt_name == 'memory':
+                                result = self._optimize_memory()
+                            elif opt_name == 'cache':
+                                result = self._optimize_cache()
+                            elif opt_name == 'resources':
+                                result = self._optimize_resources()
+                            elif opt_name == 'ml_auto':
+                                result = self._optimize_ml_parameters()
+                            elif opt_name == 'monitoring':
+                                result = self._optimize_monitoring()
+                            else:
+                                continue
+                            
+                            results[opt_name] = result
+                            
+                            # Calculer l'amélioration immédiate
+                            if result.success and result.improvements:
+                                phase_improvement = sum(result.improvements.values()) / len(result.improvements)
+                                total_improvement += phase_improvement
+                                logger.info(f"  {opt_name}: +{phase_improvement:.2f}% d'amélioration")
+                                
+                        except Exception as e:
+                            logger.error(f"Erreur lors de l'optimisation {opt_name}: {e}")
+                            results[opt_name] = OptimizationResult(
+                                module=opt_name,
+                                success=False,
+                                improvements={},
+                                time_taken_ms=0,
+                                errors=[str(e)]
+                            )
+                    
+                    # Pause entre phases pour stabilisation
+                    time.sleep(0.05)
                 
                 # Calculer les métriques globales
                 total_time = time.time() - start_time
@@ -385,6 +412,99 @@ class GlobalPerformanceOrchestrator:
             
         except Exception as e:
             logger.warning(f"Erreur lors de l'enregistrement: {e}")
+    
+    def _collect_system_metrics(self) -> Dict[str, float]:
+        """Collecte les métriques système actuelles."""
+        try:
+            import psutil
+            
+            cpu_usage = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory()
+            memory_usage = memory.percent
+            
+            return {
+                'cpu_usage': cpu_usage,
+                'memory_usage': memory_usage,
+                'memory_available_gb': memory.available / (1024**3),
+                'system_load': sum(psutil.getloadavg()) / 3.0 if hasattr(psutil, 'getloadavg') else cpu_usage / 100.0
+            }
+        except Exception as e:
+            logger.warning(f"Erreur lors de la collecte des métriques: {e}")
+            return {
+                'cpu_usage': 50.0,
+                'memory_usage': 60.0,
+                'memory_available_gb': 4.0,
+                'system_load': 0.5
+            }
+    
+    def _determine_optimization_sequence(self, metrics: Dict[str, float]) -> Dict[str, List[str]]:
+        """Détermine la séquence d'optimisation basée sur les métriques système."""
+        cpu_usage = metrics.get('cpu_usage', 50)
+        memory_usage = metrics.get('memory_usage', 60)
+        system_load = metrics.get('system_load', 0.5)
+        
+        # Stratégie adaptative basée sur l'état du système
+        if memory_usage > 85:
+            # Système sous pression mémoire - prioriser la mémoire
+            return {
+                'critical': ['memory'],
+                'high_priority': ['cache', 'resources'],
+                'optimization': ['ml_auto', 'monitoring']
+            }
+        elif cpu_usage > 90:
+            # CPU surchargé - optimiser les ressources d'abord
+            return {
+                'critical': ['resources'],
+                'high_priority': ['cache', 'memory'],
+                'optimization': ['ml_auto', 'monitoring']
+            }
+        elif system_load > 0.8:
+            # Charge système élevée - approche équilibrée
+            return {
+                'foundation': ['memory', 'cache'],
+                'performance': ['resources', 'ml_auto'],
+                'monitoring': ['monitoring']
+            }
+        else:
+            # Système en bon état - optimisation complète
+            return {
+                'foundation': ['memory'],
+                'performance': ['cache', 'resources'],
+                'intelligence': ['ml_auto'],
+                'observability': ['monitoring']
+            }
+    
+    def _generate_optimization_recommendations(self, results: Dict[str, 'OptimizationResult']) -> List[str]:
+        """Génère des recommandations basées sur les résultats d'optimisation."""
+        recommendations = []
+        
+        # Analyser les résultats pour suggérer des améliorations
+        failed_optimizations = [name for name, result in results.items() if not result.success]
+        
+        if failed_optimizations:
+            recommendations.append(f"Revoir les modules échoués: {', '.join(failed_optimizations)}")
+        
+        # Recommandations basées sur les améliorations obtenues
+        total_improvement = 0
+        for result in results.values():
+            if result.success and result.improvements:
+                total_improvement += sum(result.improvements.values())
+        
+        if total_improvement < 5:
+            recommendations.append("Considérer une optimisation plus agressive pour des gains supérieurs")
+        elif total_improvement > 25:
+            recommendations.append("Excellent! Envisager de maintenir ces optimisations régulièrement")
+        
+        # Recommandations spécifiques par module
+        for name, result in results.items():
+            if result.success and result.improvements:
+                max_improvement = max(result.improvements.values())
+                if max_improvement > 15:
+                    recommendations.append(f"Module {name} montre un excellent potentiel d'optimisation")
+                elif max_improvement < 2:
+                    recommendations.append(f"Module {name} pourrait bénéficier d'une révision approfondie")
+        
+        return recommendations[:5]  # Limiter à 5 recommandations
 
 class MockMemoryOptimizer:
     """Optimiseur mémoire simulé pour les tests."""

@@ -330,36 +330,134 @@ class TextEffects:
         mesh: trimesh.Trimesh,
         iterations: int
     ) -> trimesh.Trimesh:
-        """Applique un lissage Laplacien au maillage."""
+        """Applique un lissage Laplacien amélioré avec préservation des arêtes."""
         try:
-            # Utiliser le lissage intégré de trimesh
+            # Essayer d'utiliser le lissage intégré de trimesh
             smoothed = mesh.smoothed()
             return smoothed
         except:
-            # Fallback vers un lissage manuel simple
+            # Fallback vers un lissage manuel amélioré
             vertices = mesh.vertices.copy()
             
-            for _ in range(iterations):
+            # Construire un graphe de connectivité optimisé
+            connectivity = self._build_vertex_connectivity(mesh)
+            
+            # Détecter les arêtes importantes (points de courbure élevée)
+            edge_vertices = self._detect_high_curvature_vertices(mesh, threshold=0.5)
+            
+            for iteration in range(iterations):
                 new_vertices = vertices.copy()
                 
-                for i in range(len(vertices)):
-                    # Trouver les faces adjacentes à ce vertex
-                    adjacent_faces = mesh.faces[np.any(mesh.faces == i, axis=1)]
+                # Traitement par batch pour l'efficacité
+                batch_size = min(1000, len(vertices))
+                
+                for start_idx in range(0, len(vertices), batch_size):
+                    end_idx = min(start_idx + batch_size, len(vertices))
                     
-                    if len(adjacent_faces) > 0:
-                        # Trouver tous les vertices voisins
-                        neighbor_indices = np.unique(adjacent_faces.flatten())
-                        neighbor_indices = neighbor_indices[neighbor_indices != i]
-                        
-                        if len(neighbor_indices) > 0:
-                            # Moyenne des positions des voisins
-                            neighbor_center = np.mean(vertices[neighbor_indices], axis=0)
-                            # Mélange avec la position actuelle
-                            new_vertices[i] = 0.7 * vertices[i] + 0.3 * neighbor_center
+                    for i in range(start_idx, end_idx):
+                        if i in connectivity and len(connectivity[i]) > 0:
+                            neighbor_indices = connectivity[i]
+                            
+                            if len(neighbor_indices) > 0:
+                                # Calculer la moyenne pondérée des voisins
+                                neighbor_positions = vertices[neighbor_indices]
+                                neighbor_center = np.mean(neighbor_positions, axis=0)
+                                
+                                # Facteur de lissage adaptatif
+                                # Préserver les arêtes importantes
+                                if i in edge_vertices:
+                                    smoothing_factor = 0.1  # Lissage minimal pour les arêtes
+                                else:
+                                    # Calculer la courbure locale pour adapter le lissage
+                                    curvature = self._compute_local_curvature(vertices, i, neighbor_indices)
+                                    smoothing_factor = min(0.5, 0.3 * (1.0 - curvature))
+                                
+                                # Appliquer le lissage
+                                new_vertices[i] = (
+                                    (1 - smoothing_factor) * vertices[i] + 
+                                    smoothing_factor * neighbor_center
+                                )
                 
                 vertices = new_vertices
             
             return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
+    
+    def _build_vertex_connectivity(self, mesh: trimesh.Trimesh) -> Dict[int, List[int]]:
+        """Construit un dictionnaire de connectivité vertex-to-vertex optimisé."""
+        connectivity = {i: [] for i in range(len(mesh.vertices))}
+        
+        # Utiliser les arêtes pour construire la connectivité
+        edges = mesh.edges_unique
+        for edge in edges:
+            v0, v1 = edge
+            connectivity[v0].append(v1)
+            connectivity[v1].append(v0)
+        
+        # Éliminer les doublons
+        for vertex_id in connectivity:
+            connectivity[vertex_id] = list(set(connectivity[vertex_id]))
+        
+        return connectivity
+    
+    def _detect_high_curvature_vertices(self, mesh: trimesh.Trimesh, threshold: float = 0.5) -> set:
+        """Détecte les vertices avec une courbure élevée (arêtes importantes)."""
+        high_curvature_vertices = set()
+        
+        try:
+            # Utiliser la courbure gaussienne si disponible
+            if hasattr(mesh, 'vertex_defects'):
+                vertex_defects = mesh.vertex_defects
+                mean_defect = np.mean(np.abs(vertex_defects))
+                
+                for i, defect in enumerate(vertex_defects):
+                    if abs(defect) > mean_defect * threshold:
+                        high_curvature_vertices.add(i)
+        except:
+            # Fallback: détecter basé sur l'angle entre faces adjacentes
+            for i in range(len(mesh.vertices)):
+                adjacent_faces = mesh.faces[np.any(mesh.faces == i, axis=1)]
+                
+                if len(adjacent_faces) >= 2:
+                    # Calculer les normales des faces adjacentes
+                    normals = []
+                    for face in adjacent_faces:
+                        v0, v1, v2 = mesh.vertices[face]
+                        normal = np.cross(v1 - v0, v2 - v0)
+                        normal = normal / np.linalg.norm(normal)
+                        normals.append(normal)
+                    
+                    # Calculer l'angle maximum entre normales
+                    max_angle = 0
+                    for j in range(len(normals)):
+                        for k in range(j + 1, len(normals)):
+                            dot_product = np.clip(np.dot(normals[j], normals[k]), -1, 1)
+                            angle = np.arccos(dot_product)
+                            max_angle = max(max_angle, angle)
+                    
+                    if max_angle > threshold:
+                        high_curvature_vertices.add(i)
+        
+        return high_curvature_vertices
+    
+    def _compute_local_curvature(self, vertices: np.ndarray, vertex_idx: int, neighbors: List[int]) -> float:
+        """Calcule la courbure locale d'un vertex."""
+        if len(neighbors) < 3:
+            return 0.0
+        
+        vertex_pos = vertices[vertex_idx]
+        neighbor_positions = vertices[neighbors]
+        
+        # Calculer la distance moyenne aux voisins
+        distances = np.linalg.norm(neighbor_positions - vertex_pos, axis=1)
+        mean_distance = np.mean(distances)
+        
+        # Calculer la variance comme mesure de courbure
+        distance_variance = np.var(distances)
+        
+        # Normaliser la courbure
+        curvature = min(1.0, distance_variance / max(mean_distance, 0.001))
+        
+        return curvature
         
 # Styles prédéfinis
 PREDEFINED_STYLES = {
