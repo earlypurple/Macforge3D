@@ -215,20 +215,24 @@ class AutoOptimizer:
             
         return predictions.numpy().flatten()
         
-    def optimize_parameters(
+    def optimize_parameters_advanced(
         self,
-        param_ranges: Dict[str, Tuple[float, float]]
-    ) -> Dict[str, float]:
+        param_ranges: Dict[str, Tuple[float, float]],
+        current_performance: Optional[float] = None
+    ) -> Dict[str, Any]:
         """
-        Optimise les paramètres avec Optuna.
+        Optimise les paramètres avec algorithmes avancés et multi-objectifs.
         
         Args:
             param_ranges: Plages de valeurs pour chaque paramètre
+            current_performance: Performance actuelle pour comparaison
             
         Returns:
-            Paramètres optimaux
+            Résultats d'optimisation détaillés
         """
-        def objective(trial):
+        start_time = time.time()
+        
+        def multi_objective_function(trial):
             # Générer des paramètres
             params = {
                 name: trial.suggest_float(name, low, high)
@@ -239,19 +243,175 @@ class AutoOptimizer:
             X = np.array([[v for v in params.values()]])
             
             # Prédire la performance
-            prediction = self.predict(X)[0]
+            performance_pred = self.predict(X)[0]
             
-            return prediction
+            # Objectifs multiples
+            objectives = {
+                'performance': performance_pred,
+                'stability': self._predict_stability(params),
+                'resource_efficiency': self._predict_resource_efficiency(params)
+            }
             
-        # Créer l'étude Optuna
-        study = optuna.create_study(
-            direction="minimize" if self.config.target_metric != "quality" else "maximize"
+            # Score composite pondéré
+            weighted_score = (
+                objectives['performance'] * 0.5 +
+                objectives['stability'] * 0.3 +
+                objectives['resource_efficiency'] * 0.2
+            )
+            
+            return weighted_score
+            
+        # Configuration d'optimisation avancée
+        sampler = optuna.samplers.TPESampler(
+            n_startup_trials=20,
+            n_ei_candidates=24,
+            multivariate=True
         )
         
-        # Optimiser
-        study.optimize(objective, n_trials=self.config.n_trials)
+        pruner = optuna.pruners.HyperbandPruner(
+            min_resource=5,
+            max_resource=self.config.n_trials,
+            reduction_factor=3
+        )
         
-        return study.best_params
+        study = optuna.create_study(
+            direction="minimize" if self.config.target_metric != "quality" else "maximize",
+            sampler=sampler,
+            pruner=pruner
+        )
+        
+        # Optimisation avec callbacks
+        def callback(study, trial):
+            if len(study.trials) % 10 == 0:
+                logger.info(f"Optimisation: {len(study.trials)}/{self.config.n_trials} essais")
+                
+        study.optimize(
+            multi_objective_function, 
+            n_trials=self.config.n_trials,
+            callbacks=[callback],
+            timeout=600  # 10 minutes maximum
+        )
+        
+        optimization_time = time.time() - start_time
+        
+        # Analyser les résultats
+        best_params = study.best_params
+        best_value = study.best_value
+        
+        # Calculer l'amélioration prédite
+        improvement = None
+        if current_performance is not None:
+            improvement = abs(best_value - current_performance) / max(abs(current_performance), 0.01)
+        
+        # Analyser la convergence
+        values = [trial.value for trial in study.trials if trial.value is not None]
+        convergence_analysis = self._analyze_convergence(values)
+        
+        results = {
+            'best_params': best_params,
+            'best_value': best_value,
+            'predicted_improvement': improvement,
+            'optimization_time': optimization_time,
+            'n_trials': len(study.trials),
+            'convergence': convergence_analysis,
+            'param_importance': self._analyze_param_importance(study),
+            'confidence_score': self._calculate_confidence(study)
+        }
+        
+        return results
+    
+    def _predict_stability(self, params: Dict[str, float]) -> float:
+        """Prédit la stabilité basée sur les paramètres."""
+        # Heuristique simple pour la stabilité
+        # Plus les paramètres sont équilibrés, plus c'est stable
+        values = list(params.values())
+        if len(values) <= 1:
+            return 1.0
+            
+        normalized_values = np.array(values) / np.max(values)
+        variance = np.var(normalized_values)
+        return max(0, 1 - variance)
+    
+    def _predict_resource_efficiency(self, params: Dict[str, float]) -> float:
+        """Prédit l'efficacité des ressources."""
+        # Heuristique basée sur des paramètres connus
+        efficiency_score = 1.0
+        
+        # Pénaliser les valeurs extrêmes qui consomment plus de ressources
+        for param_name, value in params.items():
+            if 'workers' in param_name.lower() or 'threads' in param_name.lower():
+                # Trop de workers = moins efficace
+                if value > 16:
+                    efficiency_score *= 0.9
+            elif 'cache_size' in param_name.lower():
+                # Cache trop grand = moins efficace
+                if value > 1000:
+                    efficiency_score *= 0.95
+                    
+        return efficiency_score
+    
+    def _analyze_convergence(self, values: List[float]) -> Dict[str, Any]:
+        """Analyse la convergence de l'optimisation."""
+        if len(values) < 10:
+            return {"status": "insufficient_data"}
+            
+        # Diviser en segments pour analyser la convergence
+        segment_size = len(values) // 4
+        segments = [
+            values[i:i+segment_size] 
+            for i in range(0, len(values), segment_size)
+            if len(values[i:i+segment_size]) >= 3
+        ]
+        
+        if len(segments) < 2:
+            return {"status": "insufficient_segments"}
+        
+        # Calculer l'amélioration entre segments
+        segment_bests = [min(segment) if self.config.target_metric != "quality" else max(segment) 
+                        for segment in segments]
+        
+        improvements = []
+        for i in range(1, len(segment_bests)):
+            improvement = abs(segment_bests[i] - segment_bests[i-1]) / abs(segment_bests[i-1])
+            improvements.append(improvement)
+        
+        # Détermine le statut de convergence
+        recent_improvement = np.mean(improvements[-2:]) if len(improvements) >= 2 else improvements[-1]
+        
+        if recent_improvement < 0.01:
+            status = "converged"
+        elif recent_improvement < 0.05:
+            status = "converging"
+        else:
+            status = "improving"
+            
+        return {
+            "status": status,
+            "recent_improvement": recent_improvement,
+            "total_improvement": abs(segment_bests[-1] - segment_bests[0]) / abs(segment_bests[0]),
+            "stability": 1 - np.std(improvements) if improvements else 1.0
+        }
+    
+    def _analyze_param_importance(self, study) -> Dict[str, float]:
+        """Analyse l'importance des paramètres dans l'étude Optuna."""
+        try:
+            importance = optuna.importance.get_param_importances(study)
+            return {k: round(v, 4) for k, v in importance.items()}
+        except Exception as e:
+            logger.warning(f"Impossible de calculer l'importance des paramètres: {e}")
+            return {}
+    
+    def _calculate_confidence(self, study) -> float:
+        """Calcule un score de confiance pour les résultats."""
+        n_trials = len(study.trials)
+        completed_trials = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+        
+        # Score basé sur le nombre d'essais et la convergence
+        completion_rate = completed_trials / max(n_trials, 1)
+        trial_score = min(1.0, completed_trials / 50)  # Plateau à 50 essais
+        
+        confidence = (completion_rate * 0.3 + trial_score * 0.7)
+        return round(confidence, 3)
         
     def save_optimizer(self, path: Path):
         """Sauvegarde l'optimiseur."""
@@ -420,19 +580,3 @@ class AutoOptimizer:
             f"Recommandé de {direction} {param_name} de {change_pct:.1f}% "
             f"pour une amélioration estimée de {improvement:.1%}"
         )
-            test_X = np.array([[v for v in test_params.values()]])
-            decreased_perf = self.predict(test_X)[0]
-            
-            # Comparer les performances
-            best_perf = min(current_perf, increased_perf, decreased_perf)
-            if best_perf < current_perf:
-                if best_perf == increased_perf:
-                    suggestions.append(
-                        f"Augmenter {param_name} de 20% pour améliorer les performances"
-                    )
-                else:
-                    suggestions.append(
-                        f"Réduire {param_name} de 20% pour améliorer les performances"
-                    )
-                    
-        return suggestions
