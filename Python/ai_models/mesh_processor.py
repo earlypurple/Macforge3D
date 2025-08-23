@@ -1,11 +1,4 @@
 import trimesh
-import pymeshfix  # type: ignore
-import numpy as np
-import os
-import shutil
-
-
-import trimesh
 try:
     import pymeshfix  # type: ignore
     PYMESHFIX_AVAILABLE = True
@@ -19,15 +12,28 @@ import shutil
 import logging
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
-from scipy.spatial import cKDTree
-from sklearn.cluster import DBSCAN
 import time
+
+# Optional imports with fallbacks
+try:
+    from scipy.spatial import cKDTree
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    print("⚠️  scipy not available, some features may be limited")
+
+try:
+    from sklearn.cluster import DBSCAN
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    print("⚠️  sklearn not available, some features may be limited")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def analyze_mesh_quality(mesh: trimesh.Trimesh) -> Dict[str, Any]:
-    """Analyse complète de la qualité d'un maillage."""
+    """Analyse complète et avancée de la qualité d'un maillage."""
     start_time = time.time()
     
     try:
@@ -44,41 +50,65 @@ def analyze_mesh_quality(mesh: trimesh.Trimesh) -> Dict[str, Any]:
             },
             "geometric_quality": {},
             "topological_quality": {},
+            "edge_quality": {},
+            "vertex_quality": {},
             "processing_time": 0.0
         }
         
-        # Analyse géométrique
+        # Analyse géométrique avancée
         bounds = mesh.bounds
+        dimensions = bounds[1] - bounds[0]
+        
         analysis["geometric_quality"] = {
             "bounding_box": {
                 "min": bounds[0].tolist(),
                 "max": bounds[1].tolist(),
-                "dimensions": (bounds[1] - bounds[0]).tolist()
+                "dimensions": dimensions.tolist(),
+                "aspect_ratio": float(np.max(dimensions) / np.min(dimensions)) if np.min(dimensions) > 0 else float('inf')
             },
             "centroid": mesh.centroid.tolist(),
             "scale": float(mesh.scale),
-            "convex_hull_ratio": float(mesh.area / mesh.convex_hull.area) if mesh.convex_hull else 0.0
+            "convex_hull_ratio": float(mesh.area / mesh.convex_hull.area) if mesh.convex_hull else 0.0,
+            "bounding_sphere_radius": float(np.linalg.norm(mesh.vertices - mesh.centroid, axis=1).max())
         }
         
-        # Analyse topologique
+        # Analyse topologique avancée
         try:
             euler_number = len(mesh.vertices) - len(mesh.edges) + len(mesh.faces)
             genus = (2 - euler_number) // 2
+            
+            # Détection de défauts topologiques
+            boundary_edges = mesh.edges[mesh.edges_unique_inverse == -1] if hasattr(mesh, 'edges_unique_inverse') else []
+            non_manifold_edges = []
             
             analysis["topological_quality"] = {
                 "euler_number": euler_number,
                 "estimated_genus": genus,
                 "connected_components": len(mesh.split(only_watertight=False)),
-                "watertight_components": len(mesh.split(only_watertight=True))
+                "watertight_components": len(mesh.split(only_watertight=True)),
+                "boundary_edges_count": len(boundary_edges),
+                "non_manifold_edges_count": len(non_manifold_edges),
+                "manifold_score": 1.0 - (len(boundary_edges) + len(non_manifold_edges)) / max(1, len(mesh.edges))
             }
         except Exception as e:
             logger.warning(f"Erreur analyse topologique: {e}")
             analysis["topological_quality"] = {"error": str(e)}
         
-        # Analyse de la qualité des triangles
+        # Analyse de la qualité des triangles avancée
         if len(mesh.faces) > 0:
             face_areas = mesh.area_faces
             face_angles = mesh.face_angles
+            
+            # Calcul du rapport d'aspect des triangles
+            edge_lengths = np.linalg.norm(
+                mesh.vertices[mesh.faces[:, [1, 2, 0]]] - mesh.vertices[mesh.faces], 
+                axis=2
+            )
+            perimeters = np.sum(edge_lengths, axis=1)
+            aspect_ratios = perimeters**2 / (4 * np.sqrt(3) * face_areas + 1e-10)
+            
+            # Calcul de la régularité angulaire
+            angle_deviations = np.abs(face_angles - np.pi/3)  # Déviation par rapport à 60°
             
             analysis["geometric_quality"].update({
                 "triangle_quality": {
@@ -86,11 +116,75 @@ def analyze_mesh_quality(mesh: trimesh.Trimesh) -> Dict[str, Any]:
                     "max_area": float(np.max(face_areas)),
                     "mean_area": float(np.mean(face_areas)),
                     "area_std": float(np.std(face_areas)),
+                    "area_uniformity": 1.0 - float(np.std(face_areas) / (np.mean(face_areas) + 1e-10)),
                     "min_angle_deg": float(np.min(face_angles) * 180 / np.pi),
                     "max_angle_deg": float(np.max(face_angles) * 180 / np.pi),
-                    "degenerate_faces": int(np.sum(face_areas < 1e-10))
+                    "mean_angle_deviation": float(np.mean(angle_deviations) * 180 / np.pi),
+                    "degenerate_faces": int(np.sum(face_areas < 1e-10)),
+                    "aspect_ratio": {
+                        "min": float(np.min(aspect_ratios)),
+                        "max": float(np.max(aspect_ratios)),
+                        "mean": float(np.mean(aspect_ratios)),
+                        "quality_score": float(np.mean(1.0 / (aspect_ratios + 1e-10)))
+                    }
                 }
             })
+        
+        # Analyse de la qualité des arêtes
+        if len(mesh.edges) > 0:
+            edge_vectors = mesh.vertices[mesh.edges[:, 1]] - mesh.vertices[mesh.edges[:, 0]]
+            edge_lengths = np.linalg.norm(edge_vectors, axis=1)
+            
+            analysis["edge_quality"] = {
+                "length_stats": {
+                    "min": float(np.min(edge_lengths)),
+                    "max": float(np.max(edge_lengths)),
+                    "mean": float(np.mean(edge_lengths)),
+                    "std": float(np.std(edge_lengths)),
+                    "uniformity": 1.0 - float(np.std(edge_lengths) / (np.mean(edge_lengths) + 1e-10))
+                },
+                "zero_length_edges": int(np.sum(edge_lengths < 1e-10)),
+                "length_distribution_score": float(1.0 / (1.0 + np.std(edge_lengths) / (np.mean(edge_lengths) + 1e-10)))
+            }
+        
+        # Analyse de la qualité des vertices
+        if len(mesh.vertices) > 0:
+            # Calcul du degré des vertices (nombre d'arêtes connectées)
+            vertex_degrees = np.zeros(len(mesh.vertices))
+            for edge in mesh.edges:
+                vertex_degrees[edge[0]] += 1
+                vertex_degrees[edge[1]] += 1
+            
+            # Détection de vertices isolés ou avec degré anormal
+            isolated_vertices = np.sum(vertex_degrees == 0)
+            low_degree_vertices = np.sum(vertex_degrees < 3)
+            high_degree_vertices = np.sum(vertex_degrees > 8)
+            
+            analysis["vertex_quality"] = {
+                "degree_stats": {
+                    "min": int(np.min(vertex_degrees)),
+                    "max": int(np.max(vertex_degrees)),
+                    "mean": float(np.mean(vertex_degrees)),
+                    "std": float(np.std(vertex_degrees))
+                },
+                "isolated_vertices": int(isolated_vertices),
+                "low_degree_vertices": int(low_degree_vertices),
+                "high_degree_vertices": int(high_degree_vertices),
+                "regularity_score": float(1.0 - np.std(vertex_degrees) / (np.mean(vertex_degrees) + 1e-10))
+            }
+        
+        # Score de qualité global
+        quality_scores = []
+        if "triangle_quality" in analysis["geometric_quality"]:
+            quality_scores.append(analysis["geometric_quality"]["triangle_quality"]["aspect_ratio"]["quality_score"])
+        if "manifold_score" in analysis["topological_quality"]:
+            quality_scores.append(analysis["topological_quality"]["manifold_score"])
+        if "length_distribution_score" in analysis["edge_quality"]:
+            quality_scores.append(analysis["edge_quality"]["length_distribution_score"])
+        if "regularity_score" in analysis["vertex_quality"]:
+            quality_scores.append(analysis["vertex_quality"]["regularity_score"])
+        
+        analysis["overall_quality_score"] = float(np.mean(quality_scores)) if quality_scores else 0.0
         
         analysis["processing_time"] = time.time() - start_time
         return analysis

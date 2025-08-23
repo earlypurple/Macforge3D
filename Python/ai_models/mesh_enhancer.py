@@ -414,3 +414,178 @@ class MeshEnhancer:
         adaptive_weights = base_weight * (1 - 0.5 * normalized_distances)
         
         return adaptive_weights.unsqueeze(1)
+    
+    def edge_preserving_smooth(
+        self,
+        vertices: torch.Tensor,
+        faces: torch.Tensor,
+        iterations: int = 3,
+        lambda_factor: float = 0.5,
+        mu_factor: float = -0.53,
+        edge_threshold: float = 0.1
+    ) -> torch.Tensor:
+        """
+        Lissage préservant les arêtes utilisant l'algorithme de Taubin.
+        
+        Args:
+            vertices: Positions des vertices
+            faces: Faces du maillage
+            iterations: Nombre d'itérations
+            lambda_factor: Facteur de lissage positif
+            mu_factor: Facteur de correction négatif
+            edge_threshold: Seuil pour la détection d'arêtes
+            
+        Returns:
+            Vertices lissés avec préservation des arêtes
+        """
+        device = vertices.device
+        n_vertices = vertices.shape[0]
+        result = vertices.clone()
+        
+        # Construire la matrice de connectivité
+        adjacency_dict = self._build_adjacency_dict(faces)
+        
+        # Détecter les arêtes importantes
+        edge_vertices = self._detect_edge_vertices(vertices, faces, adjacency_dict, edge_threshold)
+        
+        for iteration in range(iterations):
+            # Étape 1: Lissage avec lambda
+            smoothed = self._apply_laplacian_smoothing(
+                result, adjacency_dict, lambda_factor, edge_vertices
+            )
+            
+            # Étape 2: Correction avec mu (facteur négatif)
+            result = self._apply_laplacian_smoothing(
+                smoothed, adjacency_dict, mu_factor, edge_vertices
+            )
+        
+        return result
+    
+    def _build_adjacency_dict(self, faces: torch.Tensor) -> Dict[int, List[int]]:
+        """Construit un dictionnaire d'adjacence optimisé."""
+        adjacency_dict = {}
+        
+        # Traitement vectorisé des faces
+        edges = []
+        for face in faces:
+            for i in range(3):
+                v0, v1 = face[i].item(), face[(i+1)%3].item()
+                if v0 != v1:
+                    edges.append((min(v0, v1), max(v0, v1)))
+        
+        # Éliminer les doublons
+        edges = list(set(edges))
+        
+        # Construire le dictionnaire
+        for v0, v1 in edges:
+            if v0 not in adjacency_dict:
+                adjacency_dict[v0] = []
+            if v1 not in adjacency_dict:
+                adjacency_dict[v1] = []
+            adjacency_dict[v0].append(v1)
+            adjacency_dict[v1].append(v0)
+        
+        return adjacency_dict
+    
+    def _detect_edge_vertices(
+        self,
+        vertices: torch.Tensor,
+        faces: torch.Tensor,
+        adjacency_dict: Dict[int, List[int]],
+        threshold: float
+    ) -> torch.Tensor:
+        """
+        Détecte les vertices sur les arêtes importantes du maillage.
+        
+        Args:
+            vertices: Positions des vertices
+            faces: Faces du maillage
+            adjacency_dict: Dictionnaire d'adjacence
+            threshold: Seuil de détection d'arêtes
+            
+        Returns:
+            Masque booléen des vertices d'arêtes
+        """
+        n_vertices = vertices.shape[0]
+        edge_mask = torch.zeros(n_vertices, dtype=torch.bool, device=vertices.device)
+        
+        # Calculer la courbure moyenne pour chaque vertex
+        for vertex_idx in range(n_vertices):
+            if vertex_idx in adjacency_dict:
+                neighbors = adjacency_dict[vertex_idx]
+                if len(neighbors) >= 3:
+                    # Calculer les vecteurs vers les voisins
+                    vertex_pos = vertices[vertex_idx]
+                    neighbor_positions = vertices[neighbors]
+                    
+                    # Calculer les normales des faces adjacentes
+                    face_normals = []
+                    for face in faces:
+                        if vertex_idx in face:
+                            v0, v1, v2 = vertices[face[0]], vertices[face[1]], vertices[face[2]]
+                            normal = torch.cross(v1 - v0, v2 - v0)
+                            normal = torch.nn.functional.normalize(normal, dim=0)
+                            face_normals.append(normal)
+                    
+                    if len(face_normals) >= 2:
+                        # Calculer l'angle entre les normales
+                        angles = []
+                        for i in range(len(face_normals)):
+                            for j in range(i+1, len(face_normals)):
+                                dot_product = torch.dot(face_normals[i], face_normals[j])
+                                dot_product = torch.clamp(dot_product, -1.0, 1.0)
+                                angle = torch.acos(dot_product)
+                                angles.append(angle)
+                        
+                        if angles:
+                            max_angle = max(angles)
+                            if max_angle > threshold:
+                                edge_mask[vertex_idx] = True
+        
+        return edge_mask
+    
+    def _apply_laplacian_smoothing(
+        self,
+        vertices: torch.Tensor,
+        adjacency_dict: Dict[int, List[int]],
+        weight: float,
+        edge_vertices: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Applique le lissage laplacien avec préservation des arêtes.
+        
+        Args:
+            vertices: Positions des vertices
+            adjacency_dict: Dictionnaire d'adjacence
+            weight: Poids de lissage
+            edge_vertices: Masque des vertices d'arêtes
+            
+        Returns:
+            Vertices lissés
+        """
+        device = vertices.device
+        n_vertices = vertices.shape[0]
+        result = vertices.clone()
+        
+        # Traitement par batches pour l'efficacité
+        batch_size = min(1000, n_vertices)
+        
+        for start_idx in range(0, n_vertices, batch_size):
+            end_idx = min(start_idx + batch_size, n_vertices)
+            
+            for vertex_idx in range(start_idx, end_idx):
+                if vertex_idx in adjacency_dict:
+                    neighbors = adjacency_dict[vertex_idx]
+                    if neighbors:
+                        # Calculer la moyenne des voisins
+                        neighbor_positions = vertices[neighbors]
+                        laplacian = neighbor_positions.mean(dim=0) - vertices[vertex_idx]
+                        
+                        # Réduire le lissage sur les arêtes importantes
+                        edge_weight = weight
+                        if edge_vertices[vertex_idx]:
+                            edge_weight *= 0.1  # Réduire fortement le lissage sur les arêtes
+                        
+                        result[vertex_idx] = vertices[vertex_idx] + edge_weight * laplacian
+        
+        return result
