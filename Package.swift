@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MacForge3D",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v13)
     ],

@@ -1,0 +1,16 @@
+# Infrastructure cloud requise:
+# AWS, Azure ou GCP (selon la configuration)
+boto3>=1.40.16
+azure-storage-blob>=12.26.0
+google-cloud-storage>=3.3.0
+
+# Gestion SSH et transfert sécurisé
+paramiko>=4.0.0
+
+# Outils asynchrones
+aiohttp>=3.9.0
+asyncio>=3.4.3
+
+# Dépendances communes
+requests>=2.32.4
+cryptography>=45.0.6

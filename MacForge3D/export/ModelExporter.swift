@@ -1,8 +1,30 @@
 import Foundation
 import PythonKit
 
-// Assuming Model3D is a typealias for Shape3D for now.
+// Type alias pour le modèle 3D
 typealias Model3D = Shape3D
+
+// Structure pour les résultats de simulation
+struct SimulationResults {
+    let meshData: [String: Any]
+    let results: [String: Any]
+    let timestamp: Date
+    let material: String
+    
+    func toDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "results": results,
+            "timestamp": ISO8601DateFormatter().string(from: timestamp),
+            "material": material
+        ]
+        
+        if let recommendations = results["recommendations"] {
+            dict["recommendations"] = recommendations
+        }
+        
+        return dict
+    }
+}
 
 extension Shape3D {
     func toDictionary() -> [String: [[String: [String: [Float]]]]] {
@@ -17,8 +39,18 @@ extension Shape3D {
 }
 
 
+enum ExportFormat {
+    case obj
+    case fbx
+    case gltf
+    case stl
+    case vtk
+    case json
+    case html
+}
+
 class ModelExporter {
-    func export(model: Model3D, to url: URL, format: ModelFormat) -> Bool {
+    func export(model: Model3D, to url: URL, format: ExportFormat) -> Bool {
         // Exporter le modèle dans le format choisi
         switch format {
         case .obj:
@@ -29,6 +61,51 @@ class ModelExporter {
             return exportGLTF(model, url)
         case .stl:
             return exportSTL(model, url)
+        case .vtk, .json, .html:
+            print("Format réservé pour l'export de simulation")
+            return false
+        }
+    }
+    
+    func exportSimulation(results: SimulationResults, to url: URL, format: ExportFormat) -> Bool {
+        PythonManager.initialize()
+        
+        do {
+            let simulationExporter = Python.import("exporters.simulation_export").SimulationExporter
+            let resultDict = results.toDictionary()
+            let meshDict = results.meshData
+            
+            switch format {
+            case .vtk:
+                return simulationExporter.export_to_vtk(
+                    meshDict,
+                    resultDict,
+                    url.path,
+                    data_name: "simulation_results"
+                ).toBool()
+                
+            case .json:
+                return simulationExporter.export_to_json(
+                    resultDict,
+                    url.path,
+                    include_mesh: true,
+                    mesh_data: meshDict
+                ).toBool()
+                
+            case .html:
+                return simulationExporter.export_report(
+                    resultDict,
+                    url.path,
+                    title: "Rapport de Simulation - \(results.material)"
+                ).toBool()
+                
+            default:
+                print("Format non supporté pour l'export de simulation")
+                return false
+            }
+        } catch {
+            print("Erreur lors de l'export de simulation: \(error)")
+            return false
         }
     }
 
