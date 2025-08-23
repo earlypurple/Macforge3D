@@ -21,6 +21,7 @@ MacForge3D révolutionne la création 3D en combinant l'intelligence artificiell
 ### 🤖 **Intelligence Artificielle Générative**
 - **Image-to-3D par Photogrammétrie** : Créez des modèles 3D à partir de photos
 - **Text-to-3D Avancé** : Transformez vos descriptions en modèles 3D détaillés
+- **🚀 Génération Qualité Maximum** : Nouveau mode "max" avec pipeline d'amélioration 7-phases
 - **Audio-to-3D Innovant** : Convertissez musique et sons en formes organiques
 - **Suggestions IA** : Assistant intelligent pour optimiser vos créations
 - **Apprentissage Adaptatif** : Améliore ses propositions selon vos préférences
