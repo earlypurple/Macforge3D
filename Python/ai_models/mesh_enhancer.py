@@ -310,28 +310,107 @@ class MeshEnhancer:
         weight: float = 0.5,
         iterations: int = 1
     ) -> torch.Tensor:
-        """Lisse les vertices du maillage."""
-        adj = torch.zeros(
-            (vertices.shape[0], vertices.shape[0]),
-            device=vertices.device
-        )
+        """
+        Lisse les vertices du maillage de manière optimisée.
         
-        # Construire la matrice d'adjacence
+        Utilise une approche sparse pour éviter les gros besoins mémoire.
+        """
+        device = vertices.device
+        n_vertices = vertices.shape[0]
+        
+        # Construire la liste d'adjacence de manière plus efficace
+        edges = []
         for face in faces:
             for i in range(3):
-                v0 = face[i]
-                v1 = face[(i+1)%3]
-                adj[v0, v1] = 1
-                adj[v1, v0] = 1
-                
-        # Normaliser
-        deg = adj.sum(dim=1, keepdim=True)
-        adj = adj / deg
+                v0, v1 = face[i].item(), face[(i+1)%3].item()
+                if v0 != v1:  # Éviter les auto-références
+                    edges.append((min(v0, v1), max(v0, v1)))
         
-        # Appliquer le lissage
-        smoothed = vertices
-        for _ in range(iterations):
-            neighbor_sum = torch.mm(adj, smoothed)
-            smoothed = (1 - weight) * vertices + weight * neighbor_sum
+        # Éliminer les doublons et créer un dictionnaire d'adjacence
+        edges = list(set(edges))
+        adjacency_dict = {}
+        
+        for v0, v1 in edges:
+            if v0 not in adjacency_dict:
+                adjacency_dict[v0] = []
+            if v1 not in adjacency_dict:
+                adjacency_dict[v1] = []
+            adjacency_dict[v0].append(v1)
+            adjacency_dict[v1].append(v0)
+        
+        # Appliquer le lissage de manière itérative
+        smoothed = vertices.clone()
+        
+        for iteration in range(iterations):
+            new_vertices = smoothed.clone()
+            
+            # Traitement vectorisé par batches pour l'efficacité
+            batch_size = min(1000, n_vertices)
+            
+            for start_idx in range(0, n_vertices, batch_size):
+                end_idx = min(start_idx + batch_size, n_vertices)
+                batch_indices = range(start_idx, end_idx)
+                
+                # Calculer les moyennes des voisins pour ce batch
+                neighbor_averages = torch.zeros((end_idx - start_idx, 3), device=device)
+                
+                for i, vertex_idx in enumerate(batch_indices):
+                    if vertex_idx in adjacency_dict:
+                        neighbors = adjacency_dict[vertex_idx]
+                        if neighbors:
+                            neighbor_positions = smoothed[neighbors]
+                            neighbor_averages[i] = neighbor_positions.mean(dim=0)
+                        else:
+                            neighbor_averages[i] = smoothed[vertex_idx]
+                    else:
+                        neighbor_averages[i] = smoothed[vertex_idx]
+                
+                # Appliquer le lissage avec interpolation
+                original_batch = vertices[start_idx:end_idx]
+                smoothed_batch = smoothed[start_idx:end_idx]
+                
+                # Facteur de lissage adaptatif basé sur la courbure locale
+                adaptive_weight = self._compute_adaptive_weight(
+                    smoothed_batch, neighbor_averages, weight
+                )
+                
+                new_vertices[start_idx:end_idx] = (
+                    (1 - adaptive_weight) * original_batch + 
+                    adaptive_weight * neighbor_averages
+                )
+            
+            smoothed = new_vertices
             
         return smoothed
+    
+    def _compute_adaptive_weight(
+        self, 
+        vertices: torch.Tensor, 
+        neighbors: torch.Tensor, 
+        base_weight: float
+    ) -> torch.Tensor:
+        """
+        Calcule un poids de lissage adaptatif basé sur la courbure locale.
+        
+        Args:
+            vertices: Positions des vertices originaux
+            neighbors: Moyennes des voisins
+            base_weight: Poids de base
+            
+        Returns:
+            Poids adaptatifs pour chaque vertex
+        """
+        # Calculer la distance aux voisins (mesure de courbure)
+        distances = torch.norm(vertices - neighbors, dim=1)
+        
+        # Normaliser les distances
+        max_dist = distances.max()
+        if max_dist > 0:
+            normalized_distances = distances / max_dist
+        else:
+            normalized_distances = torch.zeros_like(distances)
+        
+        # Poids adaptatif: moins de lissage dans les zones de haute courbure
+        adaptive_weights = base_weight * (1 - 0.5 * normalized_distances)
+        
+        return adaptive_weights.unsqueeze(1)

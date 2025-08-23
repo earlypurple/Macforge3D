@@ -1,7 +1,7 @@
 import logging
 import traceback
 import sys
-from typing import Dict, Any, Optional, Type, Callable, TypeVar
+from typing import Dict, Any, Optional, Type, Callable, TypeVar, Union, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 import gc
@@ -255,6 +255,142 @@ Traceback:
             return None
             
         return None
+
+class InputValidator:
+    """
+    Validateur d'entrées avec contrôles de sécurité.
+    """
+    
+    def __init__(self):
+        self.max_string_length = 10000
+        self.max_array_size = 1000000
+        self.allowed_file_extensions = {'.stl', '.obj', '.ply', '.off', '.3mf'}
+        self.dangerous_patterns = [
+            r'<script.*?>.*?</script>',
+            r'javascript:',
+            r'vbscript:',
+            r'onload\s*=',
+            r'onerror\s*=',
+            r'\.\./\.\.',  # Path traversal
+            r'\\\\',  # UNC paths
+            r'[;&|`$]',  # Command injection
+        ]
+        
+    def validate_string_input(self, value: str, field_name: str = "input") -> str:
+        """
+        Valide et nettoie une entrée string.
+        
+        Args:
+            value: Valeur à valider
+            field_name: Nom du champ pour les messages d'erreur
+            
+        Returns:
+            String validée et nettoyée
+            
+        Raises:
+            ValidationError: Si l'entrée est invalide
+        """
+        if not isinstance(value, str):
+            raise ValidationError(
+                f"{field_name} doit être une chaîne de caractères",
+                "VALIDATION_TYPE_ERROR"
+            )
+        
+        # Vérifier la longueur
+        if len(value) > self.max_string_length:
+            raise ValidationError(
+                f"{field_name} trop long (max {self.max_string_length} caractères)",
+                "VALIDATION_LENGTH_ERROR"
+            )
+        
+        # Vérifier les patterns dangereux
+        import re
+        for pattern in self.dangerous_patterns:
+            if re.search(pattern, value, re.IGNORECASE):
+                logger.warning(f"Pattern dangereux détecté dans {field_name}: {pattern}")
+                raise ValidationError(
+                    f"{field_name} contient du contenu potentiellement dangereux",
+                    "VALIDATION_SECURITY_ERROR"
+                )
+        
+        # Nettoyer les caractères de contrôle
+        cleaned = ''.join(char for char in value if ord(char) >= 32 or char in '\t\n\r')
+        
+        return cleaned
+    
+    def validate_mesh_parameters(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Valide les paramètres de maillage.
+        
+        Args:
+            params: Paramètres à valider
+            
+        Returns:
+            Paramètres validés
+            
+        Raises:
+            ValidationError: Si les paramètres sont invalides
+        """
+        validated = {}
+        
+        # Validation des paramètres communs
+        if 'resolution' in params:
+            resolution = params['resolution']
+            if not isinstance(resolution, (int, float)) or resolution < 100 or resolution > 1000000:
+                raise ValidationError(
+                    "Resolution doit être entre 100 et 1000000",
+                    "VALIDATION_RANGE_ERROR"
+                )
+            validated['resolution'] = resolution
+        
+        if 'quality' in params:
+            quality = params['quality']
+            if quality not in ['low', 'medium', 'high', 'ultra']:
+                raise ValidationError(
+                    "Quality doit être 'low', 'medium', 'high' ou 'ultra'",
+                    "VALIDATION_VALUE_ERROR"
+                )
+            validated['quality'] = quality
+        
+        if 'material' in params:
+            material = self.validate_string_input(params['material'], 'material')
+            allowed_materials = ['PLA', 'ABS', 'PETG', 'TPU', 'WOOD', 'METAL']
+            if material.upper() not in allowed_materials:
+                raise ValidationError(
+                    f"Matériau non supporté: {material}",
+                    "VALIDATION_VALUE_ERROR"
+                )
+            validated['material'] = material.upper()
+        
+        if 'temperature' in params:
+            temp = params['temperature']
+            if not isinstance(temp, (int, float)) or temp < 150.0 or temp > 350.0:
+                raise ValidationError(
+                    "Temperature doit être entre 150°C et 350°C",
+                    "VALIDATION_RANGE_ERROR"
+                )
+            validated['temperature'] = temp
+        
+        # Copier les autres paramètres après validation de base
+        for key, value in params.items():
+            if key not in validated:
+                if isinstance(value, str):
+                    validated[key] = self.validate_string_input(value, key)
+                elif isinstance(value, (int, float)):
+                    # Validation numérique de base
+                    if np.isnan(value) or np.isinf(value):
+                        raise ValidationError(
+                            f"{key} ne peut pas être NaN ou infini",
+                            "VALIDATION_VALUE_ERROR"
+                        )
+                    validated[key] = value
+                else:
+                    validated[key] = value  # Passer tel quel pour les types complexes
+        
+        return validated
+
+# Instance globale du validateur
+input_validator = InputValidator()
 
 # Instance globale du gestionnaire d'erreurs
 error_handler = ErrorHandler()

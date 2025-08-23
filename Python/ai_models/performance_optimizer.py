@@ -803,6 +803,220 @@ class PerformanceOptimizer:
             logger.error(f"Erreur lors de la collecte des stats de performance: {e}")
             return {"error": str(e)}
             
+    def optimize_memory_usage(self) -> Dict[str, Any]:
+        """
+        Optimise l'utilisation de la mémoire et nettoie les ressources inutiles.
+        
+        Returns:
+            Statistiques d'optimisation mémoire
+        """
+        logger.info("Début de l'optimisation mémoire...")
+        
+        stats_before = {
+            "memory_before_gb": round(psutil.virtual_memory().used / (1024**3), 2),
+            "memory_percent_before": psutil.virtual_memory().percent
+        }
+        
+        try:
+            # Forcer le garbage collection
+            collected = gc.collect()
+            logger.info(f"Garbage collection: {collected} objets collectés")
+            
+            # Nettoyer les caches PyTorch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info("Cache GPU PyTorch vidé")
+            
+            # Nettoyer le cache interne si disponible
+            if hasattr(self, 'cache_manager') and hasattr(self.cache_manager, 'cleanup_memory'):
+                self.cache_manager.cleanup_memory()
+                logger.info("Cache interne nettoyé")
+            
+            # Optimiser les variables globales numpy/torch
+            import sys
+            modules_to_check = ['numpy', 'torch', 'trimesh']
+            for module_name in modules_to_check:
+                if module_name in sys.modules:
+                    module = sys.modules[module_name]
+                    if hasattr(module, '__dict__'):
+                        # Nettoyer les caches internes des modules
+                        for attr_name in list(module.__dict__.keys()):
+                            if attr_name.startswith('_cache') or attr_name.endswith('_cache'):
+                                try:
+                                    delattr(module, attr_name)
+                                except:
+                                    pass
+            
+            # Attendre que le nettoyage soit effectif
+            time.sleep(0.1)
+            
+            stats_after = {
+                "memory_after_gb": round(psutil.virtual_memory().used / (1024**3), 2),
+                "memory_percent_after": psutil.virtual_memory().percent
+            }
+            
+            memory_freed = stats_before["memory_before_gb"] - stats_after["memory_after_gb"]
+            
+            optimization_stats = {
+                **stats_before,
+                **stats_after,
+                "memory_freed_gb": round(memory_freed, 2),
+                "objects_collected": collected,
+                "optimization_time": time.time(),
+                "success": True
+            }
+            
+            logger.info(f"Optimisation mémoire terminée. Mémoire libérée: {memory_freed:.2f} GB")
+            return optimization_stats
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'optimisation mémoire: {e}")
+            return {
+                **stats_before,
+                "error": str(e),
+                "success": False
+            }
+    
+    def adaptive_mesh_processing(
+        self,
+        mesh: trimesh.Trimesh,
+        target_complexity: str = "auto",
+        memory_limit_gb: Optional[float] = None
+    ) -> trimesh.Trimesh:
+        """
+        Traite un maillage de manière adaptative selon les ressources disponibles.
+        
+        Args:
+            mesh: Maillage à traiter
+            target_complexity: Complexité cible ("low", "medium", "high", "auto")
+            memory_limit_gb: Limite mémoire en GB (auto-détectée si None)
+            
+        Returns:
+            Maillage optimisé
+        """
+        if memory_limit_gb is None:
+            # Utiliser 75% de la mémoire disponible
+            available_memory = psutil.virtual_memory().available / (1024**3)
+            memory_limit_gb = available_memory * 0.75
+            
+        # Estimer la complexité du maillage
+        mesh_complexity = self._estimate_mesh_complexity(mesh)
+        logger.info(f"Complexité estimée du maillage: {mesh_complexity}")
+        
+        # Déterminer la stratégie de traitement
+        if target_complexity == "auto":
+            if memory_limit_gb > 8 and mesh_complexity < 0.7:
+                strategy = "high_quality"
+            elif memory_limit_gb > 4 and mesh_complexity < 0.5:
+                strategy = "medium_quality"
+            else:
+                strategy = "low_memory"
+        else:
+            strategy_map = {
+                "low": "low_memory",
+                "medium": "medium_quality", 
+                "high": "high_quality"
+            }
+            strategy = strategy_map.get(target_complexity, "medium_quality")
+        
+        logger.info(f"Stratégie de traitement sélectionnée: {strategy}")
+        
+        # Appliquer la stratégie
+        try:
+            if strategy == "high_quality":
+                return self._process_high_quality(mesh)
+            elif strategy == "medium_quality":
+                return self._process_medium_quality(mesh)
+            else:
+                return self._process_low_memory(mesh)
+                
+        except Exception as e:
+            logger.error(f"Erreur lors du traitement adaptatif: {e}")
+            # Fallback vers le traitement minimal
+            return self._process_low_memory(mesh)
+    
+    def _estimate_mesh_complexity(self, mesh: trimesh.Trimesh) -> float:
+        """Estime la complexité d'un maillage (0.0 = simple, 1.0 = très complexe)."""
+        try:
+            # Facteurs de complexité
+            vertex_count = len(mesh.vertices)
+            face_count = len(mesh.faces)
+            
+            # Normaliser par rapport à des valeurs de référence
+            vertex_complexity = min(vertex_count / 100000, 1.0)  # 100k vertices = complexité max
+            face_complexity = min(face_count / 200000, 1.0)  # 200k faces = complexité max
+            
+            # Autres facteurs
+            edge_complexity = 0.0
+            if mesh.edges is not None:
+                edge_complexity = min(len(mesh.edges) / 300000, 1.0)
+            
+            # Complexité géométrique (variance des normales)
+            geom_complexity = 0.0
+            if hasattr(mesh, 'face_normals') and mesh.face_normals is not None:
+                normal_variance = np.var(mesh.face_normals)
+                geom_complexity = min(normal_variance * 10, 1.0)
+            
+            # Score final pondéré
+            complexity = (
+                vertex_complexity * 0.3 +
+                face_complexity * 0.3 +
+                edge_complexity * 0.2 +
+                geom_complexity * 0.2
+            )
+            
+            return min(complexity, 1.0)
+            
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'estimation de complexité: {e}")
+            return 0.5  # Complexité moyenne par défaut
+    
+    def _process_high_quality(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Traitement haute qualité avec toutes les optimisations."""
+        processed = mesh.copy()
+        
+        # Nettoyer le maillage
+        processed.remove_degenerate_faces()
+        processed.remove_duplicate_faces()
+        processed.remove_unreferenced_vertices()
+        
+        # Améliorer les normales
+        processed.fix_normals()
+        
+        # Lissage léger pour améliorer la qualité
+        if hasattr(processed, 'smoothed'):
+            processed = processed.smoothed()
+        
+        return processed
+    
+    def _process_medium_quality(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Traitement qualité moyenne avec optimisations sélectives."""
+        processed = mesh.copy()
+        
+        # Optimisations essentielles
+        processed.remove_duplicate_faces()
+        processed.remove_unreferenced_vertices()
+        processed.fix_normals()
+        
+        return processed
+    
+    def _process_low_memory(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Traitement minimal pour économiser la mémoire."""
+        processed = mesh.copy()
+        
+        # Seulement les opérations critiques
+        processed.remove_unreferenced_vertices()
+        
+        # Simplification si nécessaire
+        if len(processed.faces) > 50000:
+            try:
+                processed = processed.simplify_quadric_decimation(face_count=50000)
+            except:
+                logger.warning("Simplification échouée, maillage conservé tel quel")
+        
+        return processed
+            
     def cleanup(self):
         """Nettoie les ressources utilisées par l'optimiseur."""
         try:
