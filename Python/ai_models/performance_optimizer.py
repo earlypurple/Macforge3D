@@ -42,7 +42,11 @@ class MemoryManager:
     
     def __init__(self):
         self.total_memory = psutil.virtual_memory().total
-        self.gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
+        # Safe GPU memory detection
+        try:
+            self.gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
+        except Exception:
+            self.gpu_memory = 0  # Fallback for systems without CUDA
         self._memory_usage = weakref.WeakKeyDictionary()
         self._lock = threading.Lock()
         

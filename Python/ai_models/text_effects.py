@@ -715,6 +715,14 @@ PREDEFINED_STYLES = {
         color=(0.95, 0.95, 0.95)
     ),
     
+    "metal": TextStyle(
+        name="metal",
+        bevel_amount=0.08,
+        roughness=0.4,
+        metallic=0.9,
+        color=(0.7, 0.7, 0.7)
+    ),
+    
     "holographique": TextStyle(
         name="holographique",
         bevel_amount=0.05,
