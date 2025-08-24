@@ -17,6 +17,8 @@ class ImageTo3DGenerator {
 
         // Run the Python code on a background thread to avoid blocking the UI
         return await Task.detached(priority: .userInitiated) {
+            print("[PROFILING] Starting Python call: ImageTo3D.generate_3d_model_from_images")
+            let startTime = Date()
             do {
                 print("🐍 Importing 'image_to_3d' Python module...")
                 let imageTo3DModule = Python.import("ai_models.image_to_3d")
@@ -31,9 +33,13 @@ class ImageTo3DGenerator {
 
                 // Convert the PythonObject result to a Swift String
                 let path = String(result)
+                let timeElapsed = Date().timeIntervalSince(startTime)
+                print("[PROFILING] Python call finished successfully. Time elapsed: \(String(format: "%.4f", timeElapsed)) seconds.")
                 print("✅ Python script executed successfully. Result: \(path ?? "nil")")
                 return path
             } catch {
+                let timeElapsed = Date().timeIntervalSince(startTime)
+                print("[PROFILING] Python call failed. Time elapsed: \(String(format: "%.4f", timeElapsed)) seconds.")
                 print("❌ Python script execution failed with error: \(error)")
                 // It's better to return the actual Python error for debugging.
                 return "Error: Python script failed. \(error)"

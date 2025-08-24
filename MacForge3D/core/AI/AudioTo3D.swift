@@ -38,20 +38,28 @@ class AudioTo3D {
 
         // Run the python function in a background thread
         DispatchQueue.global(qos: .userInitiated).async {
+            print("[PROFILING] Starting Python call: AudioTo3D.generate_3d_from_audio")
+            let startTime = Date()
             do {
                 let generateFunc = audioTo3DModule.generate_3d_from_audio
                 let resultPath = try generateFunc(audioPath).get()
 
                 if let path = String(resultPath) {
+                    let timeElapsed = Date().timeIntervalSince(startTime)
+                    print("[PROFILING] Python call finished successfully. Time elapsed: \(String(format: "%.4f", timeElapsed)) seconds.")
                     DispatchQueue.main.async {
                         completion(.success(path))
                     }
                 } else {
+                    let timeElapsed = Date().timeIntervalSince(startTime)
+                    print("[PROFILING] Python call failed (path conversion). Time elapsed: \(String(format: "%.4f", timeElapsed)) seconds.")
                     DispatchQueue.main.async {
                         completion(.failure(.modelGenerationFailed("Failed to convert result path to String")))
                     }
                 }
             } catch {
+                let timeElapsed = Date().timeIntervalSince(startTime)
+                print("[PROFILING] Python call failed (exception). Time elapsed: \(String(format: "%.4f", timeElapsed)) seconds.")
                 DispatchQueue.main.async {
                     completion(.failure(.modelGenerationFailed(error.localizedDescription)))
                 }
