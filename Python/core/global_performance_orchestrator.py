@@ -437,6 +437,10 @@ class GlobalPerformanceOrchestrator:
                 'system_load': 0.5
             }
     
+    def collect_system_metrics(self) -> Dict[str, float]:
+        """Collecte les métriques système actuelles (méthode publique)."""
+        return self._collect_system_metrics()
+    
     def _determine_optimization_sequence(self, metrics: Dict[str, float]) -> Dict[str, List[str]]:
         """Détermine la séquence d'optimisation basée sur les métriques système."""
         cpu_usage = metrics.get('cpu_usage', 50)

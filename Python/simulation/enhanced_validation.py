@@ -529,7 +529,7 @@ def validate_performance_config(config: Dict[str, Any]) -> Dict[str, Any]:
     validator.add_rule(ValidationRule(
         name="optimization_level",
         param_type=ParameterType.ENUM,
-        allowed_values=["cpu_intensive", "memory_intensive", "gpu_intensive", "balanced"],
+        allowed_values=["cpu_intensive", "memory_intensive", "gpu_intensive", "balanced", "ultra"],
         description="Niveau d'optimisation",
         auto_correct=False
     ))
@@ -646,10 +646,22 @@ class AdvancedValidator(EnhancedValidator):
         context: Dict[str, Any]
     ) -> ValidationResult:
         """Valide avec une règle adaptative."""
-        result = ValidationResult(is_valid=True)
+        result = ValidationResult(is_valid=True, original_value=value)
         
-        # Utiliser la validation de base
-        base_result = self._validate_by_type(value, rule)
+        # Utiliser la validation de base en appliquant la règle
+        if rule.param_type == ParameterType.INTEGER:
+            base_result = self._validate_integer(value, rule, result)
+        elif rule.param_type == ParameterType.FLOAT:
+            base_result = self._validate_float(value, rule, result)
+        elif rule.param_type == ParameterType.STRING:
+            base_result = self._validate_string(value, rule, result)
+        elif rule.param_type == ParameterType.BOOLEAN:
+            base_result = self._validate_boolean(value, rule, result)
+        elif rule.param_type == ParameterType.ENUM:
+            base_result = self._validate_enum(value, rule, result)
+        else:
+            base_result = result
+            
         result.is_valid = base_result.is_valid
         result.errors = base_result.errors
         result.warnings = base_result.warnings

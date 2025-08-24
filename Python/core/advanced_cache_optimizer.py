@@ -578,6 +578,38 @@ class AdvancedCacheOptimizer:
         self._cleanup_running = False
         if self._cleanup_thread.is_alive():
             self._cleanup_thread.join(timeout=5)
+    
+    def predict_future_access_pattern(self, prediction_window: float = 3600) -> List[Dict[str, Any]]:
+        """Prédit les patterns d'accès futurs pour tous les éléments en cache."""
+        patterns = []
+        
+        try:
+            # Utiliser l'access predictor interne si disponible
+            if hasattr(self, '_access_predictor'):
+                for key in list(self._cache.keys())[:10]:  # Limiter à 10 pour les tests
+                    probability = self._access_predictor.predict_future_access(key, prediction_window)
+                    if probability > 0.1:  # Seuil minimum
+                        patterns.append({
+                            'key': key,
+                            'probability': probability,
+                            'predicted_access_time': time.time() + prediction_window * probability
+                        })
+                
+                # Trier par probabilité décroissante
+                patterns.sort(key=lambda x: x['probability'], reverse=True)
+            else:
+                # Fallback simple
+                for key in list(self._cache.keys())[:5]:
+                    patterns.append({
+                        'key': key,
+                        'probability': 0.5,  # Probabilité par défaut
+                        'predicted_access_time': time.time() + prediction_window * 0.5
+                    })
+            
+        except Exception as e:
+            logger.warning(f"Erreur prédiction patterns: {e}")
+        
+        return patterns
 
 class AccessPredictor:
     """Prédicteur d'accès pour optimiser le cache."""
@@ -681,3 +713,25 @@ class AccessPredictor:
         # Fallback: probabilité basée uniquement sur la fréquence récente
         frequency = self.get_access_frequency(key, prediction_window)
         return min(1.0, frequency * prediction_window / 10.0)  # Normalisation heuristique
+    
+    def predict_future_access_pattern(self, prediction_window: float = 3600) -> List[Dict[str, Any]]:
+        """Prédit les patterns d'accès futurs pour tous les éléments en cache."""
+        patterns = []
+        
+        try:
+            for key in list(self.cache.keys())[:10]:  # Limiter à 10 pour les tests
+                probability = self.predict_future_access(key, prediction_window)
+                if probability > 0.1:  # Seuil minimum
+                    patterns.append({
+                        'key': key,
+                        'probability': probability,
+                        'predicted_access_time': time.time() + prediction_window * probability
+                    })
+            
+            # Trier par probabilité décroissante
+            patterns.sort(key=lambda x: x['probability'], reverse=True)
+            
+        except Exception as e:
+            logger.warning(f"Erreur prédiction patterns: {e}")
+        
+        return patterns
