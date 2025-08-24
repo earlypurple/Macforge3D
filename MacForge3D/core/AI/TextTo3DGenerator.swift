@@ -18,11 +18,17 @@ class TextTo3DGenerator {
     }
     
     func generate(from prompt: String, style: String = "standard") async throws -> URL {
+        print("[PROFILING] Starting Python call: TextTo3DGenerator.generate_model")
+        let startTime = Date()
+
         // Call Python function to generate 3D model
         let result = try await Task {
             let modelPath = pythonModule.generate_model(prompt: prompt, style: style)
             return URL(fileURLWithPath: String(modelPath)!)
         }.value
+
+        let timeElapsed = Date().timeIntervalSince(startTime)
+        print("[PROFILING] Python call finished. Time elapsed: \(String(format: "%.4f", timeElapsed)) seconds.")
         
         return result
     }

@@ -39,7 +39,7 @@ graphene==3.3.0
 graphql-core==3.2.3
 
 # Real-time Communications
-socketio==5.8.0
+python-socketio==5.8.0
 websockets==11.0.3
 
 # Caching

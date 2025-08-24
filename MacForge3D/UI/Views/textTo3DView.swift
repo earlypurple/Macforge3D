@@ -45,9 +45,11 @@ struct TextTo3DView: View {
                             .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                     )
                     .onChange(of: prompt) {
-                        triggerGeneration()
+                        // No longer auto-generating, but you could still perform
+                        // other actions here if needed, like validation.
                     }
             }
+            .disabled(isGenerating)
 
             Section(header: Text("Settings").font(.headline)) {
                 ColorPicker("Model Color", selection: $modelColor)
@@ -58,18 +60,30 @@ struct TextTo3DView: View {
                 }
                 .pickerStyle(.segmented)
             }
+            // Disable all settings during generation
+            .disabled(isGenerating)
 
-            if isGenerating {
-                HStack {
-                    Spacer()
+            // --- ACTION BUTTONS ---
+            HStack {
+                Spacer()
+                if isGenerating {
+                    // Show a progress indicator and a Cancel button
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle())
-                    Text("Generating model...")
-                        .foregroundColor(.secondary)
-                    Spacer()
+                    Button("Cancel", role: .destructive) {
+                        generationTask?.cancel()
+                    }
+                    .padding(.leading, 8)
+                } else {
+                    // Show the Generate button
+                    Button(action: triggerGeneration) {
+                        Label("Generate Model", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .padding()
+                Spacer()
             }
+            .padding(.top)
 
             if let modelURL = generatedModelURL {
                 Section(header: Text("Generated Model Preview").font(.headline)) {
@@ -77,12 +91,12 @@ struct TextTo3DView: View {
                         .frame(height: 350)
                         .background(Color(NSColor.windowBackgroundColor))
                         .cornerRadius(10)
+                        .accessibilityIdentifier("3DPreview")
                 }
             }
         }
         .padding()
         .navigationTitle("Text to 3D")
-        .onAppear(perform: triggerGeneration) // Generate on first appearance
         .alert("Error", isPresented: $showingAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -106,8 +120,6 @@ struct TextTo3DView: View {
                     self.generatedModelURL = nil // Clear previous model
                 }
 
-                try await Task.sleep(for: .milliseconds(500))
-
                 print("Starting generation for prompt: \(prompt)")
                 let result = await TextTo3DGenerator.generate(prompt: prompt, quality: quality.rawValue)
 
@@ -122,6 +134,9 @@ struct TextTo3DView: View {
                     self.isGenerating = false
                 }
             } catch {
+                await MainActor.run {
+                    self.isGenerating = false
+                }
                 print("Generation task cancelled.")
             }
         }
