@@ -1648,4 +1648,141 @@ class PerformanceOptimizer:
             recommendations.append("Performance globalement satisfaisante")
         
         return recommendations
+    
+    def profile_operation(self, operation_name: str, operation_func: callable, *args, **kwargs) -> Dict[str, Any]:
+        """Profile an operation and return detailed metrics."""
+        start_time = time.time()
+        start_memory = self._get_memory_usage()
+        
+        try:
+            # Execute operation
+            result = operation_func(*args, **kwargs)
+            
+            # Calculate metrics
+            execution_time = time.time() - start_time
+            end_memory = self._get_memory_usage()
+            memory_delta = end_memory - start_memory
+            
+            # Categorize performance
+            if execution_time < 0.1:
+                category = 'excellent'
+            elif execution_time < 0.5:
+                category = 'good'
+            elif execution_time < 2.0:
+                category = 'moderate'
+            else:
+                category = 'slow'
+            
+            return {
+                'operation_name': operation_name,
+                'execution_time': execution_time,
+                'memory_delta': memory_delta,
+                'performance_category': category,
+                'result': result,
+                'success': True
+            }
+            
+        except Exception as e:
+            return {
+                'operation_name': operation_name,
+                'execution_time': time.time() - start_time,
+                'memory_delta': 0,
+                'performance_category': 'error',
+                'error': str(e),
+                'success': False
+            }
+    
+    def _get_memory_usage(self) -> float:
+        """Get current memory usage in MB."""
+        try:
+            import psutil
+            process = psutil.Process()
+            return process.memory_info().rss / 1024 / 1024  # MB
+        except:
+            return 0.0
+    
+    def detect_bottlenecks(self, performance_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Detect performance bottlenecks from performance data."""
+        bottlenecks = []
+        
+        # Check CPU usage
+        cpu_usage = performance_data.get('cpu_usage', 0)
+        if cpu_usage > 80:
+            bottlenecks.append({
+                'type': 'cpu',
+                'severity': 'high' if cpu_usage > 90 else 'medium',
+                'value': cpu_usage,
+                'description': f'High CPU usage: {cpu_usage}%',
+                'suggestions': ['Optimize CPU-intensive operations', 'Consider parallel processing']
+            })
+        
+        # Check memory usage
+        memory_usage = performance_data.get('memory_usage', 0)
+        if memory_usage > 85:
+            bottlenecks.append({
+                'type': 'memory',
+                'severity': 'high' if memory_usage > 95 else 'medium',
+                'value': memory_usage,
+                'description': f'High memory usage: {memory_usage}%',
+                'suggestions': ['Optimize memory allocation', 'Implement garbage collection']
+            })
+        
+        # Check response time
+        response_time = performance_data.get('response_time', 0)
+        if response_time > 2.0:
+            bottlenecks.append({
+                'type': 'latency',
+                'severity': 'high' if response_time > 5.0 else 'medium',
+                'value': response_time,
+                'description': f'High response time: {response_time}s',
+                'suggestions': ['Cache frequently accessed data', 'Optimize algorithms']
+            })
+        
+        return bottlenecks
+    
+    def get_adaptive_configuration(self, system_metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate adaptive configuration based on system metrics."""
+        config = {}
+        
+        # Adapt thread count based on CPU cores
+        cpu_cores = system_metrics.get('cpu_cores', 4)
+        current_load = system_metrics.get('current_load', 0.5)
+        
+        if current_load < 0.3:
+            config['thread_workers'] = min(cpu_cores * 2, 16)
+        elif current_load < 0.7:
+            config['thread_workers'] = cpu_cores
+        else:
+            config['thread_workers'] = max(cpu_cores // 2, 2)
+        
+        # Adapt memory settings
+        memory_gb = system_metrics.get('memory_gb', 8)
+        config['memory_limit_gb'] = memory_gb * 0.7  # Use 70% of available memory
+        
+        # Adapt batch size
+        if memory_gb >= 16:
+            config['batch_size'] = 8
+        elif memory_gb >= 8:
+            config['batch_size'] = 4
+        else:
+            config['batch_size'] = 2
+        
+        # GPU settings
+        gpu_memory_gb = system_metrics.get('gpu_memory_gb', 0)
+        if gpu_memory_gb > 0:
+            config['enable_gpu_acceleration'] = True
+            config['gpu_memory_limit_gb'] = gpu_memory_gb * 0.8
+        else:
+            config['enable_gpu_acceleration'] = False
+        
+        # Quality vs speed tradeoff
+        if current_load > 0.8:
+            config['optimization_level'] = 'speed'
+        elif current_load < 0.3:
+            config['optimization_level'] = 'quality'
+        else:
+            config['optimization_level'] = 'balanced'
+        
+        return config
+        
         self.cleanup()

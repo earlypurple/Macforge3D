@@ -747,3 +747,41 @@ class PerformanceMonitor:
         except Exception as e:
             logger.error(f"Erreur lors de la génération de suggestions: {e}")
             return [{"priority": "error", "suggestion": f"Erreur lors de l'analyse: {str(e)}"}]
+
+class SystemMonitor:
+    """Simple system monitor for diagnostics."""
+    
+    def __init__(self):
+        self.monitoring = False
+        self.samples = []
+        
+    def monitor_duration(self, duration_seconds: int) -> Dict[str, Any]:
+        """Monitor system for specified duration."""
+        start_time = time.time()
+        end_time = start_time + duration_seconds
+        samples = []
+        
+        while time.time() < end_time:
+            try:
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory = psutil.virtual_memory()
+                
+                sample = {
+                    'timestamp': time.time(),
+                    'cpu_usage': cpu_percent,
+                    'memory_usage': memory.percent,
+                    'memory_available': memory.available / (1024**3)  # GB
+                }
+                
+                samples.append(sample)
+                
+            except Exception as e:
+                logger.warning(f"Error collecting metrics: {e}")
+                
+        return {
+            'duration': duration_seconds,
+            'samples_collected': len(samples),
+            'avg_cpu': np.mean([s['cpu_usage'] for s in samples]) if samples else 0,
+            'avg_memory': np.mean([s['memory_usage'] for s in samples]) if samples else 0,
+            'samples': samples
+        }
