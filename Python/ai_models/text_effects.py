@@ -38,6 +38,16 @@ class TextStyle:
     emboss_depth: float = 0.0
     smooth_iterations: int = 0
     
+    # Effets ultra-avancés ajoutés
+    tessellation_level: int = 0
+    fractal_intensity: float = 0.0
+    fractal_scale: float = 1.0
+    plasma_frequency: float = 1.0
+    plasma_amplitude: float = 0.0
+    vertex_displacement: float = 0.0
+    edge_hardening: float = 0.0
+    surface_roughening: float = 0.0
+    
 class TextEffects:
     """Gestionnaire d'effets pour le texte 3D."""
     
@@ -91,6 +101,33 @@ class TextEffects:
             result = self._apply_emboss_effect(
                 result,
                 style.emboss_depth
+            )
+            
+        # Apply ultra-advanced effects
+        if hasattr(style, 'tessellation_level') and style.tessellation_level > 0:
+            result = self._apply_tessellation(
+                result,
+                style.tessellation_level
+            )
+            
+        if hasattr(style, 'fractal_intensity') and style.fractal_intensity > 0:
+            result = self._apply_fractal_effect(
+                result,
+                style.fractal_intensity,
+                getattr(style, 'fractal_scale', 1.0)
+            )
+            
+        if hasattr(style, 'plasma_amplitude') and style.plasma_amplitude > 0:
+            result = self._apply_plasma_effect(
+                result,
+                getattr(style, 'plasma_frequency', 1.0),
+                style.plasma_amplitude
+            )
+            
+        if hasattr(style, 'vertex_displacement') and style.vertex_displacement > 0:
+            result = self._apply_vertex_displacement(
+                result,
+                style.vertex_displacement
             )
             
         # Enhanced material application
@@ -255,6 +292,142 @@ class TextEffects:
             vertices[i][2] += wave
             
         return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
+    
+    def _apply_tessellation(
+        self,
+        mesh: trimesh.Trimesh,
+        level: int
+    ) -> trimesh.Trimesh:
+        """Applique une tessellation adaptative au maillage."""
+        if level <= 0:
+            return mesh
+            
+        result = mesh.copy()
+        
+        for _ in range(level):
+            try:
+                # Subdivision Catmull-Clark si disponible
+                result = result.subdivide()
+            except:
+                # Fallback: subdivision simple
+                result = self._simple_subdivide(result)
+                
+        return result
+    
+    def _simple_subdivide(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """Subdivision simple pour fallback."""
+        vertices = mesh.vertices.copy()
+        faces = mesh.faces.copy()
+        new_vertices = []
+        new_faces = []
+        
+        # Ajouter les vertices existants
+        new_vertices.extend(vertices)
+        vertex_count = len(vertices)
+        
+        # Pour chaque face, ajouter un point au centre et créer de nouvelles faces
+        for face in faces:
+            # Calculer le centre de la face
+            center = np.mean(vertices[face], axis=0)
+            new_vertices.append(center)
+            center_idx = vertex_count
+            vertex_count += 1
+            
+            # Créer de nouvelles faces triangulaires
+            for i in range(3):
+                new_face = [face[i], face[(i+1)%3], center_idx]
+                new_faces.append(new_face)
+        
+        return trimesh.Trimesh(vertices=np.array(new_vertices), faces=np.array(new_faces))
+    
+    def _apply_fractal_effect(
+        self,
+        mesh: trimesh.Trimesh,
+        intensity: float,
+        scale: float = 1.0
+    ) -> trimesh.Trimesh:
+        """Applique un effet fractal au maillage."""
+        vertices = mesh.vertices.copy()
+        normals = mesh.vertex_normals
+        
+        # Générer du bruit fractal multi-octave
+        for i in range(len(vertices)):
+            pos = vertices[i] * scale
+            
+            # Bruit fractal avec plusieurs octaves
+            fractal_value = 0.0
+            amplitude = intensity
+            frequency = 1.0
+            
+            for octave in range(4):  # 4 octaves pour plus de détail
+                noise_val = self._simple_noise(pos * frequency)
+                fractal_value += noise_val * amplitude
+                amplitude *= 0.5
+                frequency *= 2.0
+            
+            # Appliquer le déplacement dans la direction de la normale
+            vertices[i] += normals[i] * fractal_value
+            
+        return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
+    
+    def _apply_plasma_effect(
+        self,
+        mesh: trimesh.Trimesh,
+        frequency: float,
+        amplitude: float
+    ) -> trimesh.Trimesh:
+        """Applique un effet plasma dynamique au maillage."""
+        vertices = mesh.vertices.copy()
+        
+        # Calculer les bounds pour normaliser
+        min_bounds = np.min(vertices, axis=0)
+        max_bounds = np.max(vertices, axis=0)
+        size = max_bounds - min_bounds
+        
+        for i in range(len(vertices)):
+            pos = vertices[i]
+            # Normaliser la position
+            norm_pos = (pos - min_bounds) / (size + 1e-8)
+            
+            # Effet plasma avec plusieurs fonctions sinusoïdales
+            plasma = (
+                np.sin(norm_pos[0] * frequency * np.pi) +
+                np.sin(norm_pos[1] * frequency * np.pi) +
+                np.sin((norm_pos[0] + norm_pos[1]) * frequency * 0.5 * np.pi) +
+                np.sin(np.sqrt(norm_pos[0]**2 + norm_pos[1]**2) * frequency * np.pi)
+            ) / 4.0
+            
+            # Appliquer l'effet sur l'axe Z
+            vertices[i][2] += plasma * amplitude
+            
+        return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
+    
+    def _apply_vertex_displacement(
+        self,
+        mesh: trimesh.Trimesh,
+        displacement: float
+    ) -> trimesh.Trimesh:
+        """Applique un déplacement aléatoire contrôlé aux vertices."""
+        vertices = mesh.vertices.copy()
+        normals = mesh.vertex_normals
+        
+        # Générer des déplacements aléatoires avec distribution gaussienne
+        np.random.seed(42)  # Pour la reproductibilité
+        random_displacements = np.random.normal(0, displacement, len(vertices))
+        
+        for i in range(len(vertices)):
+            # Appliquer le déplacement dans la direction de la normale
+            vertices[i] += normals[i] * random_displacements[i]
+            
+        return trimesh.Trimesh(vertices=vertices, faces=mesh.faces)
+    
+    def _simple_noise(self, pos: np.ndarray) -> float:
+        """Fonction de bruit simple pour le fallback."""
+        # Bruit pseudo-aléatoire basé sur la position
+        x, y, z = pos
+        return (
+            np.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453 % 1.0 - 0.5
+        ) * 2.0
     
     def _apply_twist_effect(
         self,
@@ -598,6 +771,62 @@ PREDEFINED_STYLES = {
         transparency=0.7,
         emission=0.3,
         color=(0.8, 1.0, 0.9)
+    ),
+    
+    # Nouveaux styles ultra-avancés
+    "tesselle": TextStyle(
+        name="tesselle",
+        tessellation_level=2,
+        bevel_amount=0.08,
+        roughness=0.4,
+        metallic=0.6,
+        color=(0.6, 0.8, 0.9)
+    ),
+    
+    "fractal": TextStyle(
+        name="fractal",
+        fractal_intensity=0.1,
+        fractal_scale=2.0,
+        roughness=0.8,
+        color=(0.5, 0.3, 0.8)
+    ),
+    
+    "plasma_avance": TextStyle(
+        name="plasma_avance",
+        plasma_frequency=2.5,
+        plasma_amplitude=0.08,
+        emission=0.6,
+        transparency=0.3,
+        color=(1.0, 0.3, 0.6)
+    ),
+    
+    "chaotique": TextStyle(
+        name="chaotique",
+        vertex_displacement=0.05,
+        noise_scale=0.15,
+        roughness=0.9,
+        color=(0.4, 0.2, 0.1)
+    ),
+    
+    "ultra_moderne": TextStyle(
+        name="ultra_moderne",
+        tessellation_level=1,
+        plasma_frequency=1.5,
+        plasma_amplitude=0.03,
+        metallic=0.9,
+        roughness=0.2,
+        emission=0.1,
+        color=(0.1, 0.9, 1.0)
+    ),
+    
+    "organique": TextStyle(
+        name="organique",
+        fractal_intensity=0.08,
+        fractal_scale=1.5,
+        wave_amplitude=0.04,
+        wave_frequency=1.8,
+        subsurface=0.3,
+        color=(0.3, 0.8, 0.4)
     )
 }
 
@@ -610,3 +839,73 @@ def get_style(name: str) -> TextStyle:
     if name not in PREDEFINED_STYLES:
         raise ValueError(f"Style '{name}' non trouvé")
     return PREDEFINED_STYLES[name]
+
+def validate_style(style: TextStyle) -> Tuple[bool, List[str]]:
+    """Valide un style et retourne les erreurs/avertissements."""
+    errors = []
+    warnings = []
+    
+    # Vérifications des valeurs
+    if style.bevel_amount < 0 or style.bevel_amount > 1:
+        errors.append("bevel_amount doit être entre 0 et 1")
+    
+    if style.bevel_segments < 1 or style.bevel_segments > 10:
+        warnings.append("bevel_segments recommandé entre 1 et 10")
+    
+    if style.roughness < 0 or style.roughness > 1:
+        errors.append("roughness doit être entre 0 et 1")
+    
+    if style.metallic < 0 or style.metallic > 1:
+        errors.append("metallic doit être entre 0 et 1")
+    
+    if style.emission < 0:
+        errors.append("emission doit être >= 0")
+    
+    if style.transparency < 0 or style.transparency > 1:
+        errors.append("transparency doit être entre 0 et 1")
+    
+    if style.subsurface < 0 or style.subsurface > 1:
+        errors.append("subsurface doit être entre 0 et 1")
+    
+    # Vérifications des couleurs
+    for i, c in enumerate(style.color):
+        if c < 0 or c > 1:
+            errors.append(f"color[{i}] doit être entre 0 et 1")
+    
+    # Vérifications des nouveaux paramètres
+    if hasattr(style, 'tessellation_level') and style.tessellation_level > 3:
+        warnings.append("tessellation_level > 3 peut causer des problèmes de performance")
+    
+    if hasattr(style, 'fractal_intensity') and style.fractal_intensity > 1:
+        warnings.append("fractal_intensity > 1 peut créer des déformations extrêmes")
+    
+    return len(errors) == 0, errors + warnings
+
+def create_preview_style(base_style: str, modifications: Dict[str, Any]) -> TextStyle:
+    """Crée un style personnalisé basé sur un style existant."""
+    if base_style not in PREDEFINED_STYLES:
+        raise ValueError(f"Style de base '{base_style}' non trouvé")
+    
+    base = PREDEFINED_STYLES[base_style]
+    
+    # Créer une copie du style de base
+    import copy
+    new_style = copy.deepcopy(base)
+    new_style.name = f"{base_style}_personnalise"
+    
+    # Appliquer les modifications
+    for key, value in modifications.items():
+        if hasattr(new_style, key):
+            setattr(new_style, key, value)
+        else:
+            logger.warning(f"Attribut '{key}' non reconnu pour TextStyle")
+    
+    # Valider le nouveau style
+    is_valid, messages = validate_style(new_style)
+    if not is_valid:
+        logger.error(f"Style personnalisé invalide: {messages}")
+        raise ValueError(f"Style personnalisé invalide: {messages}")
+    elif messages:
+        logger.warning(f"Avertissements pour le style personnalisé: {messages}")
+    
+    return new_style

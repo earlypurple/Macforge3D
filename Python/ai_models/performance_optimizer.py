@@ -1285,3 +1285,353 @@ class PerformanceOptimizer:
     def __del__(self):
         """Destructeur pour s'assurer que les ressources sont libérées."""
         self.cleanup()
+    
+    def real_time_profiler(
+        self,
+        operation_name: str,
+        target_function: callable,
+        *args,
+        **kwargs
+    ) -> Tuple[Any, Dict[str, Any]]:
+        """
+        Profile une opération en temps réel avec métriques détaillées.
+        
+        Args:
+            operation_name: Nom de l'opération
+            target_function: Fonction à profiler
+            *args, **kwargs: Arguments pour la fonction
+            
+        Returns:
+            Tuple (résultat, métriques de profiling)
+        """
+        import time
+        import tracemalloc
+        
+        # Démarrer le tracing mémoire
+        tracemalloc.start()
+        
+        # Métriques initiales
+        initial_time = time.time()
+        initial_memory = psutil.virtual_memory()
+        initial_gpu_memory = self._get_gpu_memory_usage()
+        
+        try:
+            # Exécuter la fonction
+            result = target_function(*args, **kwargs)
+            
+            # Métriques finales
+            execution_time = time.time() - initial_time
+            final_memory = psutil.virtual_memory()
+            final_gpu_memory = self._get_gpu_memory_usage()
+            
+            # Analyser la trace mémoire
+            current, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            
+            # Calculer les métriques
+            memory_delta = final_memory.used - initial_memory.used
+            gpu_memory_delta = final_gpu_memory - initial_gpu_memory
+            
+            profiling_metrics = {
+                'operation_name': operation_name,
+                'execution_time_seconds': execution_time,
+                'memory_usage': {
+                    'peak_mb': peak / (1024 * 1024),
+                    'current_mb': current / (1024 * 1024),
+                    'system_delta_mb': memory_delta / (1024 * 1024)
+                },
+                'gpu_memory_delta_mb': gpu_memory_delta / (1024 * 1024) if gpu_memory_delta else 0,
+                'performance_category': self._categorize_performance(execution_time, peak),
+                'recommendations': self._generate_performance_recommendations(execution_time, peak, memory_delta)
+            }
+            
+            # Log des résultats
+            logger.info(f"Profiling {operation_name}: {execution_time:.2f}s, "
+                       f"peak: {peak/(1024*1024):.1f}MB, "
+                       f"catégorie: {profiling_metrics['performance_category']}")
+            
+            return result, profiling_metrics
+            
+        except Exception as e:
+            tracemalloc.stop()
+            logger.error(f"Erreur lors du profiling de {operation_name}: {e}")
+            raise
+    
+    def _categorize_performance(self, execution_time: float, peak_memory: int) -> str:
+        """Catégorise la performance d'une opération."""
+        memory_mb = peak_memory / (1024 * 1024)
+        
+        if execution_time < 1.0 and memory_mb < 100:
+            return "excellent"
+        elif execution_time < 5.0 and memory_mb < 500:
+            return "bon"
+        elif execution_time < 15.0 and memory_mb < 1000:
+            return "acceptable"
+        elif execution_time < 60.0 and memory_mb < 2000:
+            return "lent"
+        else:
+            return "très_lent"
+    
+    def _generate_performance_recommendations(
+        self,
+        execution_time: float,
+        peak_memory: int,
+        memory_delta: int
+    ) -> List[str]:
+        """Génère des recommandations d'optimisation."""
+        recommendations = []
+        
+        memory_mb = peak_memory / (1024 * 1024)
+        delta_mb = memory_delta / (1024 * 1024)
+        
+        if execution_time > 30.0:
+            recommendations.append("Considérer l'utilisation de GPU ou parallélisation")
+        
+        if memory_mb > 1000:
+            recommendations.append("Optimiser l'usage mémoire ou utiliser le streaming")
+        
+        if delta_mb > 500:
+            recommendations.append("Possible fuite mémoire, vérifier les références")
+        
+        if execution_time > 10.0 and memory_mb < 200:
+            recommendations.append("Opération CPU-intensive, optimiser les algorithmes")
+        
+        if not recommendations:
+            recommendations.append("Performance optimale")
+        
+        return recommendations
+    
+    def auto_resource_optimization(
+        self,
+        workload_type: str = "balanced"
+    ) -> Dict[str, Any]:
+        """
+        Optimisation automatique des ressources basée sur le type de charge.
+        
+        Args:
+            workload_type: Type de charge ("cpu_intensive", "memory_intensive", "gpu_intensive", "balanced")
+            
+        Returns:
+            Configuration optimisée
+        """
+        system_info = self._get_system_capabilities()
+        
+        if workload_type == "cpu_intensive":
+            config = self._optimize_for_cpu_workload(system_info)
+        elif workload_type == "memory_intensive":
+            config = self._optimize_for_memory_workload(system_info)
+        elif workload_type == "gpu_intensive":
+            config = self._optimize_for_gpu_workload(system_info)
+        else:  # balanced
+            config = self._optimize_balanced_workload(system_info)
+        
+        # Appliquer la configuration
+        self._apply_optimization_config(config)
+        
+        logger.info(f"Configuration optimisée pour {workload_type}: {config}")
+        return config
+    
+    def _get_system_capabilities(self) -> Dict[str, Any]:
+        """Analyse les capacités système."""
+        try:
+            memory_info = psutil.virtual_memory()
+            cpu_info = {
+                'count': os.cpu_count(),
+                'usage_percent': psutil.cpu_percent(interval=1),
+                'load_avg': os.getloadavg() if hasattr(os, 'getloadavg') else [0, 0, 0]
+            }
+            
+            gpu_info = {
+                'available': torch.cuda.is_available(),
+                'count': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+                'memory_gb': torch.cuda.get_device_properties(0).total_memory / (1024**3) if torch.cuda.is_available() else 0
+            }
+            
+            return {
+                'memory': {
+                    'total_gb': memory_info.total / (1024**3),
+                    'available_gb': memory_info.available / (1024**3),
+                    'usage_percent': memory_info.percent
+                },
+                'cpu': cpu_info,
+                'gpu': gpu_info
+            }
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'analyse système: {e}")
+            return self._get_default_system_info()
+    
+    def _optimize_for_cpu_workload(self, system_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimise pour les charges CPU intensives."""
+        cpu_count = system_info['cpu']['count']
+        return {
+            'thread_workers': min(cpu_count * 2, 32),
+            'process_workers': min(cpu_count, 16),
+            'memory_limit_gb': system_info['memory']['available_gb'] * 0.6,
+            'batch_size': max(1, cpu_count // 2),
+            'enable_multiprocessing': True,
+            'optimization_level': 'cpu_intensive'
+        }
+    
+    def _optimize_for_memory_workload(self, system_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimise pour les charges mémoire intensives."""
+        available_memory = system_info['memory']['available_gb']
+        return {
+            'thread_workers': 4,  # Limiter les threads pour économiser la mémoire
+            'process_workers': 2,
+            'memory_limit_gb': available_memory * 0.8,
+            'batch_size': 1,  # Traitement séquentiel
+            'enable_memory_mapping': True,
+            'enable_streaming': True,
+            'optimization_level': 'memory_intensive'
+        }
+    
+    def _optimize_for_gpu_workload(self, system_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimise pour les charges GPU intensives."""
+        gpu_available = system_info['gpu']['available']
+        gpu_memory = system_info['gpu']['memory_gb']
+        
+        return {
+            'thread_workers': 8,
+            'process_workers': 4,
+            'memory_limit_gb': system_info['memory']['available_gb'] * 0.5,
+            'batch_size': min(16, int(gpu_memory)) if gpu_available else 4,
+            'enable_gpu_acceleration': gpu_available,
+            'gpu_memory_limit_gb': gpu_memory * 0.8 if gpu_available else 0,
+            'optimization_level': 'gpu_intensive'
+        }
+    
+    def _optimize_balanced_workload(self, system_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimise pour une charge équilibrée."""
+        cpu_count = system_info['cpu']['count']
+        available_memory = system_info['memory']['available_gb']
+        
+        return {
+            'thread_workers': min(cpu_count, 16),
+            'process_workers': min(cpu_count // 2, 8),
+            'memory_limit_gb': available_memory * 0.7,
+            'batch_size': min(8, cpu_count),
+            'enable_adaptive_optimization': True,
+            'optimization_level': 'balanced'
+        }
+    
+    def _apply_optimization_config(self, config: Dict[str, Any]):
+        """Applique la configuration d'optimisation."""
+        try:
+            # Ajuster les pools de workers si nécessaire
+            if hasattr(self, 'thread_pool'):
+                self.thread_pool._max_workers = config.get('thread_workers', 8)
+            
+            if hasattr(self, 'process_pool'):
+                self.process_pool._max_workers = config.get('process_workers', 4)
+            
+            # Mettre à jour la configuration adaptative
+            if hasattr(self, '_adaptive_config'):
+                self._adaptive_config.update({
+                    'memory_threshold': min(0.8, config.get('memory_limit_gb', 8) / 16),
+                    'auto_adjust_workers': config.get('enable_adaptive_optimization', True)
+                })
+            
+            logger.info("Configuration d'optimisation appliquée avec succès")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'application de la configuration: {e}")
+    
+    def _get_default_system_info(self) -> Dict[str, Any]:
+        """Retourne des informations système par défaut en cas d'erreur."""
+        return {
+            'memory': {'total_gb': 8, 'available_gb': 4, 'usage_percent': 50},
+            'cpu': {'count': 4, 'usage_percent': 25, 'load_avg': [0.5, 0.5, 0.5]},
+            'gpu': {'available': False, 'count': 0, 'memory_gb': 0}
+        }
+    
+    def _get_gpu_memory_usage(self) -> int:
+        """Retourne l'usage mémoire GPU en octets."""
+        if torch.cuda.is_available():
+            try:
+                return torch.cuda.memory_allocated()
+            except:
+                return 0
+        return 0
+    
+    def bottleneck_detector(
+        self,
+        operation_metrics: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Détecte les goulots d'étranglement dans une séquence d'opérations.
+        
+        Args:
+            operation_metrics: Liste des métriques d'opérations
+            
+        Returns:
+            Analyse des goulots d'étranglement
+        """
+        if not operation_metrics:
+            return {'bottlenecks': [], 'recommendations': ['Aucune donnée à analyser']}
+        
+        bottlenecks = []
+        total_time = sum(op['execution_time_seconds'] for op in operation_metrics)
+        
+        for op in operation_metrics:
+            time_percent = (op['execution_time_seconds'] / total_time) * 100
+            memory_peak = op['memory_usage']['peak_mb']
+            
+            # Identifier les goulots d'étranglement
+            if time_percent > 50:
+                bottlenecks.append({
+                    'type': 'temps_execution',
+                    'operation': op['operation_name'],
+                    'impact_percent': time_percent,
+                    'details': f"Consomme {time_percent:.1f}% du temps total"
+                })
+            
+            if memory_peak > 1000:  # Plus de 1GB
+                bottlenecks.append({
+                    'type': 'consommation_memoire',
+                    'operation': op['operation_name'],
+                    'impact_mb': memory_peak,
+                    'details': f"Pic mémoire de {memory_peak:.1f}MB"
+                })
+        
+        # Générer des recommandations
+        recommendations = self._generate_bottleneck_recommendations(bottlenecks, operation_metrics)
+        
+        return {
+            'bottlenecks': bottlenecks,
+            'recommendations': recommendations,
+            'total_operations': len(operation_metrics),
+            'total_time_seconds': total_time,
+            'average_time_per_operation': total_time / len(operation_metrics)
+        }
+    
+    def _generate_bottleneck_recommendations(
+        self,
+        bottlenecks: List[Dict[str, Any]],
+        operation_metrics: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Génère des recommandations pour résoudre les goulots d'étranglement."""
+        recommendations = []
+        
+        time_bottlenecks = [b for b in bottlenecks if b['type'] == 'temps_execution']
+        memory_bottlenecks = [b for b in bottlenecks if b['type'] == 'consommation_memoire']
+        
+        if time_bottlenecks:
+            recommendations.append("Optimiser les opérations les plus lentes avec parallélisation ou GPU")
+            recommendations.append("Considérer le cache pour les opérations répétitives")
+        
+        if memory_bottlenecks:
+            recommendations.append("Implémenter le streaming pour les gros volumes de données")
+            recommendations.append("Utiliser la compression ou réduire la précision si possible")
+        
+        # Analyser les patterns
+        cpu_intensive_ops = [op for op in operation_metrics 
+                           if op['performance_category'] in ['lent', 'très_lent']]
+        
+        if len(cpu_intensive_ops) > len(operation_metrics) / 2:
+            recommendations.append("Considérer l'upgrade hardware ou l'optimisation algorithmique")
+        
+        if not recommendations:
+            recommendations.append("Performance globalement satisfaisante")
+        
+        return recommendations
+        self.cleanup()
