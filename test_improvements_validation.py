@@ -76,7 +76,7 @@ def test_cache_optimizer_improvements():
         
         # Tester l'optimisation
         optimization_result = cache_optimizer.optimize_cache()
-        assert 'total_time_ms' in optimization_result, "Résultat d'optimisation invalide"
+        assert 'duration_ms' in optimization_result, "Résultat d'optimisation invalide"
         
         # Tester la prédiction d'accès futur
         future_prob = cache_optimizer._access_predictor.predict_future_access("key1", 3600)

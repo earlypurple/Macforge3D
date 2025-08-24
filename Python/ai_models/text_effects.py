@@ -504,31 +504,26 @@ class TextEffects:
         iterations: int
     ) -> trimesh.Trimesh:
         """Applique un lissage Laplacien amélioré avec préservation des arêtes."""
-        try:
-            # Essayer d'utiliser le lissage intégré de trimesh
-            smoothed = mesh.smoothed()
-            return smoothed
-        except:
-            # Fallback vers un lissage manuel amélioré
-            vertices = mesh.vertices.copy()
+        # Utiliser le lissage manuel qui préserve la topologie
+        vertices = mesh.vertices.copy()
+        
+        # Construire un graphe de connectivité optimisé
+        connectivity = self._build_vertex_connectivity(mesh)
+        
+        # Détecter les arêtes importantes (points de courbure élevée)
+        edge_vertices = self._detect_high_curvature_vertices(mesh, threshold=0.5)
+        
+        for iteration in range(iterations):
+            new_vertices = vertices.copy()
             
-            # Construire un graphe de connectivité optimisé
-            connectivity = self._build_vertex_connectivity(mesh)
+            # Traitement par batch pour l'efficacité
+            batch_size = min(1000, len(vertices))
             
-            # Détecter les arêtes importantes (points de courbure élevée)
-            edge_vertices = self._detect_high_curvature_vertices(mesh, threshold=0.5)
-            
-            for iteration in range(iterations):
-                new_vertices = vertices.copy()
+            for start_idx in range(0, len(vertices), batch_size):
+                end_idx = min(start_idx + batch_size, len(vertices))
                 
-                # Traitement par batch pour l'efficacité
-                batch_size = min(1000, len(vertices))
-                
-                for start_idx in range(0, len(vertices), batch_size):
-                    end_idx = min(start_idx + batch_size, len(vertices))
-                    
-                    for i in range(start_idx, end_idx):
-                        if i in connectivity and len(connectivity[i]) > 0:
+                for i in range(start_idx, end_idx):
+                    if i in connectivity and len(connectivity[i]) > 0:
                             neighbor_indices = connectivity[i]
                             
                             if len(neighbor_indices) > 0:
