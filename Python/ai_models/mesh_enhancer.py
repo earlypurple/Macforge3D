@@ -99,7 +99,7 @@ class MeshEnhancer:
             self.decoder.load_state_dict(state_dict["decoder"])
             logger.info("Modèles chargés avec succès")
         except Exception as e:
-            logger.warning(f"Impossible de charger les poids pré-entraînés: {e}")
+            logger.info(f"Aucun modèle pré-entraîné trouvé ({e}). Utilisation des poids par défaut.")
             
         logger.info(f"MeshEnhancer initialisé sur {self.config.device}")
             
@@ -167,7 +167,7 @@ class MeshEnhancer:
         v1 = torch.index_select(vertices, 0, faces[:, 1])
         v2 = torch.index_select(vertices, 0, faces[:, 2])
         
-        face_normals = torch.cross(v1 - v0, v2 - v0)
+        face_normals = torch.linalg.cross(v1 - v0, v2 - v0)
         face_normals = F.normalize(face_normals, dim=1)
         
         return face_normals
@@ -520,7 +520,7 @@ class MeshEnhancer:
         v1 = vertices[faces[:, 1]]
         v2 = vertices[faces[:, 2]]
         
-        face_normals = torch.cross(v1 - v0, v2 - v0)
+        face_normals = torch.linalg.cross(v1 - v0, v2 - v0)
         face_normals = torch.nn.functional.normalize(face_normals, dim=1)
         
         # Analyser chaque vertex en batch pour l'efficacité

@@ -145,6 +145,35 @@ class EnhancedValidator:
             correction_strategy=lambda x: max(0.0, min(1.0, float(x)))
         ))
         
+        # Règles pour les effets avancés
+        self.add_rule(ValidationRule(
+            name="fractal_intensity",
+            param_type=ParameterType.FLOAT,
+            min_value=0.0,
+            max_value=2.0,
+            description="Intensité de l'effet fractal",
+            auto_correct=True,
+            correction_strategy=lambda x: max(0.0, min(2.0, float(x)))
+        ))
+        
+        self.add_rule(ValidationRule(
+            name="plasma_amplitude",
+            param_type=ParameterType.FLOAT,
+            min_value=0.0,
+            max_value=5.0,
+            description="Amplitude de l'effet plasma",
+            auto_correct=True,
+            correction_strategy=lambda x: max(0.0, min(5.0, float(x)))
+        ))
+        
+        self.add_rule(ValidationRule(
+            name="enable_adaptive_optimization",
+            param_type=ParameterType.BOOLEAN,
+            description="Active l'optimisation adaptative",
+            auto_correct=True,
+            correction_strategy=lambda x: bool(x)
+        ))
+        
         # Règles pour les chemins de fichiers
         self.add_rule(ValidationRule(
             name="input_path",
