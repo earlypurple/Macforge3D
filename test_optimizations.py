@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 # Ajouter le chemin Python au sys.path
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root / "Python"))
 
 def test_global_orchestrator():

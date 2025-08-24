@@ -525,6 +525,16 @@ class DiagnosticCenter:
             recommendations.append("Système en bon état de fonctionnement")
         
         return recommendations
+    
+    def start_real_time_monitoring(self):
+        """Start real-time monitoring for the diagnostic center."""
+        self.monitor.start_monitoring()
+        logger.info("Monitoring temps réel démarré")
+    
+    def stop_real_time_monitoring(self):
+        """Stop real-time monitoring for the diagnostic center."""
+        self.monitor.stop_monitoring()
+        logger.info("Monitoring temps réel arrêté")
 
 # Instance globale du centre de diagnostic
 diagnostic_center = DiagnosticCenter()
