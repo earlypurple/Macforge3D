@@ -800,3 +800,408 @@ class MeshEnhancer:
             smoothed = (1 - strength) * smoothed + strength * neighbor_means
         
         return smoothed
+    
+    def quality_analysis_detailed(
+        self,
+        mesh: trimesh.Trimesh,
+        return_recommendations: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Analyse détaillée de la qualité du maillage avec recommandations.
+        
+        Args:
+            mesh: Maillage à analyser
+            return_recommendations: Si True, inclut des recommandations
+            
+        Returns:
+            Rapport d'analyse détaillé
+        """
+        try:
+            # Analyse de base
+            basic_metrics = self._analyze_mesh_quality(mesh)
+            
+            # Analyses supplémentaires
+            detailed_analysis = {
+                'basic_metrics': basic_metrics,
+                'vertex_analysis': self._analyze_vertices(mesh),
+                'face_analysis': self._analyze_faces(mesh),
+                'topology_analysis': self._analyze_topology(mesh),
+                'geometric_analysis': self._analyze_geometry(mesh)
+            }
+            
+            # Score global pondéré
+            overall_score = self._calculate_overall_quality_score(detailed_analysis)
+            detailed_analysis['overall_score'] = overall_score
+            
+            # Recommandations si demandées
+            if return_recommendations:
+                detailed_analysis['recommendations'] = self._generate_quality_recommendations(detailed_analysis)
+            
+            return detailed_analysis
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'analyse détaillée: {e}")
+            return {'error': str(e), 'overall_score': 0.0}
+    
+    def edge_detection_advanced(
+        self,
+        mesh: trimesh.Trimesh,
+        detection_method: str = "curvature",
+        sensitivity: float = 0.5
+    ) -> Dict[str, Any]:
+        """
+        Détection avancée des arêtes importantes avec différentes méthodes.
+        
+        Args:
+            mesh: Maillage à analyser
+            detection_method: Méthode de détection ("curvature", "angle", "hybrid")
+            sensitivity: Sensibilité de détection (0-1)
+            
+        Returns:
+            Résultats de détection avec indices des arêtes importantes
+        """
+        try:
+            vertices, faces, scale = self._prepare_mesh(mesh)
+            
+            # Construire le graphe d'adjacence
+            adjacency_dict = {}
+            for face in faces:
+                for i in range(3):
+                    v0, v1 = face[i].item(), face[(i+1)%3].item()
+                    if v0 not in adjacency_dict:
+                        adjacency_dict[v0] = []
+                    if v1 not in adjacency_dict:
+                        adjacency_dict[v1] = []
+                    adjacency_dict[v0].append(v1)
+                    adjacency_dict[v1].append(v0)
+            
+            # Méthodes de détection
+            if detection_method == "curvature":
+                edge_vertices = self._detect_edge_vertices_by_curvature(vertices, faces, adjacency_dict, sensitivity)
+            elif detection_method == "angle":
+                edge_vertices = self._detect_edge_vertices_by_angle(vertices, faces, adjacency_dict, sensitivity)
+            else:  # hybrid
+                edge_curvature = self._detect_edge_vertices_by_curvature(vertices, faces, adjacency_dict, sensitivity * 0.8)
+                edge_angle = self._detect_edge_vertices_by_angle(vertices, faces, adjacency_dict, sensitivity * 1.2)
+                edge_vertices = edge_curvature | edge_angle  # Union des deux méthodes
+            
+            # Statistiques
+            edge_indices = [i for i, is_edge in enumerate(edge_vertices) if is_edge]
+            edge_percentage = (len(edge_indices) / len(vertices)) * 100
+            
+            return {
+                'method': detection_method,
+                'sensitivity': sensitivity,
+                'edge_vertices_indices': edge_indices,
+                'edge_vertices_mask': edge_vertices.cpu().numpy().tolist(),
+                'total_vertices': len(vertices),
+                'edge_vertices_count': len(edge_indices),
+                'edge_percentage': edge_percentage,
+                'detection_quality': self._assess_edge_detection_quality(edge_percentage)
+            }
+            
+        except Exception as e:
+            logger.error(f"Erreur détection arêtes: {e}")
+            return {'error': str(e)}
+    
+    def _detect_edge_vertices_by_curvature(
+        self,
+        vertices: torch.Tensor,
+        faces: torch.Tensor,
+        adjacency_dict: Dict[int, List[int]],
+        sensitivity: float
+    ) -> torch.Tensor:
+        """Détection d'arêtes basée sur la courbure locale."""
+        n_vertices = vertices.shape[0]
+        edge_mask = torch.zeros(n_vertices, dtype=torch.bool, device=vertices.device)
+        
+        # Calculer la courbure locale pour chaque vertex
+        for vertex_idx in range(n_vertices):
+            if vertex_idx in adjacency_dict:
+                neighbors = adjacency_dict[vertex_idx]
+                if len(neighbors) >= 3:
+                    # Calculer le vecteur Laplacien
+                    neighbor_positions = vertices[neighbors]
+                    neighbor_center = neighbor_positions.mean(dim=0)
+                    laplacian = neighbor_center - vertices[vertex_idx]
+                    curvature = torch.norm(laplacian)
+                    
+                    # Seuil adaptatif basé sur la sensibilité
+                    threshold = sensitivity * 0.1  # Ajuster selon les besoins
+                    if curvature > threshold:
+                        edge_mask[vertex_idx] = True
+        
+        return edge_mask
+    
+    def _detect_edge_vertices_by_angle(
+        self,
+        vertices: torch.Tensor,
+        faces: torch.Tensor,
+        adjacency_dict: Dict[int, List[int]],
+        sensitivity: float
+    ) -> torch.Tensor:
+        """Détection d'arêtes basée sur les angles entre faces adjacentes."""
+        return self._detect_edge_vertices(vertices, faces, adjacency_dict, sensitivity * np.pi / 4)
+    
+    def _analyze_vertices(self, mesh: trimesh.Trimesh) -> Dict[str, Any]:
+        """Analyse les propriétés des vertices."""
+        try:
+            vertices = mesh.vertices
+            
+            # Statistiques de distribution
+            centroid = np.mean(vertices, axis=0)
+            distances_to_centroid = np.linalg.norm(vertices - centroid, axis=1)
+            
+            # Détection des vertices isolés
+            vertex_connectivity = {}
+            for face in mesh.faces:
+                for vertex_idx in face:
+                    if vertex_idx not in vertex_connectivity:
+                        vertex_connectivity[vertex_idx] = set()
+                    vertex_connectivity[vertex_idx].update(face)
+                    vertex_connectivity[vertex_idx].discard(vertex_idx)
+            
+            isolated_vertices = [v for v, neighbors in vertex_connectivity.items() if len(neighbors) < 2]
+            
+            return {
+                'count': len(vertices),
+                'centroid': centroid.tolist(),
+                'bounding_box_size': (np.max(vertices, axis=0) - np.min(vertices, axis=0)).tolist(),
+                'avg_distance_to_centroid': np.mean(distances_to_centroid),
+                'isolated_vertices_count': len(isolated_vertices),
+                'connectivity_distribution': {
+                    'min': min(len(neighbors) for neighbors in vertex_connectivity.values()) if vertex_connectivity else 0,
+                    'max': max(len(neighbors) for neighbors in vertex_connectivity.values()) if vertex_connectivity else 0,
+                    'avg': np.mean([len(neighbors) for neighbors in vertex_connectivity.values()]) if vertex_connectivity else 0
+                }
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_faces(self, mesh: trimesh.Trimesh) -> Dict[str, Any]:
+        """Analyse les propriétés des faces."""
+        try:
+            faces = mesh.faces
+            vertices = mesh.vertices
+            
+            # Calcul des aires et périmètres
+            face_areas = []
+            face_perimeters = []
+            aspect_ratios = []
+            
+            for face in faces:
+                v0, v1, v2 = vertices[face]
+                
+                # Aire du triangle
+                area = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0))
+                face_areas.append(area)
+                
+                # Périmètre
+                perimeter = (
+                    np.linalg.norm(v1 - v0) +
+                    np.linalg.norm(v2 - v1) +
+                    np.linalg.norm(v0 - v2)
+                )
+                face_perimeters.append(perimeter)
+                
+                # Ratio d'aspect (périmètre² / aire)
+                if area > 1e-10:
+                    aspect_ratio = perimeter**2 / (4 * np.pi * area)
+                    aspect_ratios.append(aspect_ratio)
+            
+            return {
+                'count': len(faces),
+                'area_stats': {
+                    'min': min(face_areas) if face_areas else 0,
+                    'max': max(face_areas) if face_areas else 0,
+                    'mean': np.mean(face_areas) if face_areas else 0,
+                    'std': np.std(face_areas) if face_areas else 0
+                },
+                'aspect_ratio_stats': {
+                    'min': min(aspect_ratios) if aspect_ratios else 0,
+                    'max': max(aspect_ratios) if aspect_ratios else 0,
+                    'mean': np.mean(aspect_ratios) if aspect_ratios else 0,
+                    'std': np.std(aspect_ratios) if aspect_ratios else 0
+                },
+                'degenerate_faces': len([r for r in aspect_ratios if r > 10])  # Faces très allongées
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_topology(self, mesh: trimesh.Trimesh) -> Dict[str, Any]:
+        """Analyse la topologie du maillage."""
+        try:
+            # Caractéristique d'Euler pour les surfaces fermées: V - E + F = 2
+            V = len(mesh.vertices)
+            F = len(mesh.faces)
+            
+            # Compter les arêtes uniques
+            edges = set()
+            for face in mesh.faces:
+                for i in range(3):
+                    edge = tuple(sorted([face[i], face[(i+1)%3]]))
+                    edges.add(edge)
+            E = len(edges)
+            
+            euler_characteristic = V - E + F
+            
+            # Vérifier les arêtes non-manifold (partagées par plus de 2 faces)
+            edge_face_count = {}
+            for face_idx, face in enumerate(mesh.faces):
+                for i in range(3):
+                    edge = tuple(sorted([face[i], face[(i+1)%3]]))
+                    if edge not in edge_face_count:
+                        edge_face_count[edge] = 0
+                    edge_face_count[edge] += 1
+            
+            non_manifold_edges = len([e for e, count in edge_face_count.items() if count > 2])
+            boundary_edges = len([e for e, count in edge_face_count.items() if count == 1])
+            
+            return {
+                'vertices': V,
+                'edges': E,
+                'faces': F,
+                'euler_characteristic': euler_characteristic,
+                'is_closed_surface': euler_characteristic == 2 and boundary_edges == 0,
+                'non_manifold_edges': non_manifold_edges,
+                'boundary_edges': boundary_edges,
+                'genus': (2 - euler_characteristic) // 2 if euler_characteristic <= 2 else 0
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _analyze_geometry(self, mesh: trimesh.Trimesh) -> Dict[str, Any]:
+        """Analyse les propriétés géométriques."""
+        try:
+            vertices = mesh.vertices
+            
+            # Volume et surface (approximatifs)
+            try:
+                volume = abs(mesh.volume) if hasattr(mesh, 'volume') else 0
+                surface_area = mesh.area if hasattr(mesh, 'area') else sum(mesh.area_faces) if hasattr(mesh, 'area_faces') else 0
+            except:
+                volume = 0
+                surface_area = 0
+            
+            # Boîte englobante
+            min_bounds = np.min(vertices, axis=0)
+            max_bounds = np.max(vertices, axis=0)
+            bbox_size = max_bounds - min_bounds
+            bbox_volume = np.prod(bbox_size)
+            
+            # Compacité (ratio volume/surface)
+            compactness = (volume / (surface_area**1.5)) if surface_area > 0 else 0
+            
+            # Facteur de forme (ratio volume réel / volume boîte englobante)
+            shape_factor = volume / bbox_volume if bbox_volume > 0 else 0
+            
+            return {
+                'volume': volume,
+                'surface_area': surface_area,
+                'bounding_box': {
+                    'min': min_bounds.tolist(),
+                    'max': max_bounds.tolist(),
+                    'size': bbox_size.tolist(),
+                    'volume': bbox_volume
+                },
+                'compactness': compactness,
+                'shape_factor': shape_factor,
+                'volume_to_surface_ratio': volume / surface_area if surface_area > 0 else 0
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _calculate_overall_quality_score(self, analysis: Dict[str, Any]) -> float:
+        """Calcule un score de qualité global pondéré."""
+        try:
+            score = 100.0  # Score de base
+            
+            # Pénalités basées sur l'analyse
+            basic = analysis.get('basic_metrics', {})
+            faces = analysis.get('face_analysis', {})
+            topology = analysis.get('topology_analysis', {})
+            
+            # Pénalité pour la variance des longueurs d'arêtes
+            edge_variance = basic.get('edge_length_variance', 0)
+            score -= min(20, edge_variance * 40)
+            
+            # Pénalité pour les ratios d'aspect
+            avg_aspect = faces.get('aspect_ratio_stats', {}).get('mean', 1)
+            score -= min(15, (avg_aspect - 1) * 10)
+            
+            # Pénalité pour les faces dégénérées
+            degenerate = faces.get('degenerate_faces', 0)
+            total_faces = faces.get('count', 1)
+            score -= min(25, (degenerate / total_faces) * 100)
+            
+            # Pénalité pour les problèmes topologiques
+            non_manifold = topology.get('non_manifold_edges', 0)
+            score -= min(20, non_manifold * 5)
+            
+            # Bonus pour surface fermée
+            if topology.get('is_closed_surface', False):
+                score += 5
+            
+            return max(0, min(100, score))
+            
+        except Exception as e:
+            logger.warning(f"Erreur calcul score qualité: {e}")
+            return 0.0
+    
+    def _generate_quality_recommendations(self, analysis: Dict[str, Any]) -> List[str]:
+        """Génère des recommandations basées sur l'analyse."""
+        recommendations = []
+        
+        try:
+            basic = analysis.get('basic_metrics', {})
+            faces = analysis.get('face_analysis', {})
+            topology = analysis.get('topology_analysis', {})
+            vertices = analysis.get('vertex_analysis', {})
+            
+            # Recommandations basées sur les métriques
+            if basic.get('edge_length_variance', 0) > 0.5:
+                recommendations.append("Régulariser les longueurs d'arêtes avec _regularize_edge_lengths")
+            
+            avg_aspect = faces.get('aspect_ratio_stats', {}).get('mean', 1)
+            if avg_aspect > 2.0:
+                recommendations.append("Améliorer la qualité des faces avec _improve_face_quality")
+            
+            degenerate = faces.get('degenerate_faces', 0)
+            if degenerate > 0:
+                recommendations.append(f"Corriger {degenerate} face(s) dégénérée(s)")
+            
+            non_manifold = topology.get('non_manifold_edges', 0)
+            if non_manifold > 0:
+                recommendations.append(f"Réparer {non_manifold} arête(s) non-manifold")
+            
+            isolated = vertices.get('isolated_vertices_count', 0)
+            if isolated > 0:
+                recommendations.append(f"Supprimer {isolated} vertex(vertices) isolé(s)")
+            
+            if not topology.get('is_closed_surface', False):
+                recommendations.append("Fermer la surface si nécessaire")
+            
+            overall_score = analysis.get('overall_score', 100)
+            if overall_score < 70:
+                recommendations.append("Score qualité faible - amélioration générale recommandée")
+            
+            if not recommendations:
+                recommendations.append("Qualité de maillage satisfaisante")
+            
+        except Exception as e:
+            recommendations.append(f"Erreur génération recommandations: {e}")
+        
+        return recommendations
+    
+    def _assess_edge_detection_quality(self, edge_percentage: float) -> str:
+        """Évalue la qualité de la détection d'arêtes."""
+        if edge_percentage < 5:
+            return "Très faible - maillage très lisse"
+        elif edge_percentage < 15:
+            return "Faible - peu d'arêtes détectées"
+        elif edge_percentage < 30:
+            return "Normale - détection équilibrée"
+        elif edge_percentage < 50:
+            return "Élevée - maillage détaillé"
+        else:
+            return "Très élevée - maillage très complexe"
