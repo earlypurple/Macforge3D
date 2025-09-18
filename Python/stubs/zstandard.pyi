@@ -1,0 +1,13 @@
+"""
+Stub file for zstandard module.
+"""
+
+from typing import Any, Union, Optional, ByteString
+
+class ZstdCompressor:
+    def __init__(self, level: int = 3, *args: Any, **kwargs: Any) -> None: ...
+    def compress(self, data: ByteString) -> bytes: ...
+
+class ZstdDecompressor:
+    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+    def decompress(self, data: ByteString) -> bytes: ...
