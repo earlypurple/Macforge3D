@@ -1,0 +1,26 @@
+"""
+Stub typings for google.cloud.storage
+"""
+from typing import Dict, Any, List, Optional, Union, Iterator
+
+class Blob:
+    name: str
+    size: int
+    updated: Any
+    etag: str
+    
+    def __init__(self, name: str, bucket: "Bucket") -> None: ...
+    def upload_from_filename(self, filename: str) -> None: ...
+    def download_to_filename(self, filename: str) -> None: ...
+
+class Bucket:
+    name: str
+    
+    def __init__(self, client: "Client", name: str) -> None: ...
+    def blob(self, blob_name: str) -> Blob: ...
+    def list_blobs(self, prefix: Optional[str] = None) -> Iterator[Blob]: ...
+
+class Client:
+    @classmethod
+    def from_service_account_info(cls, info: Dict[str, Any]) -> "Client": ...
+    def bucket(self, bucket_name: str) -> Bucket: ...
