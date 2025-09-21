@@ -28,9 +28,11 @@ app = FastAPI(title="MacForge3D Monitor")
 # Monter les fichiers statiques
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
 @dataclass
 class SystemMetrics:
     """Métriques système en temps réel."""
+
     cpu_percent: float
     memory_percent: float
     gpu_utilization: Optional[float]
@@ -38,39 +40,44 @@ class SystemMetrics:
     disk_usage_percent: float
     timestamp: str
 
+
 @dataclass
 class CacheMetrics:
     """Métriques du cache."""
+
     size: int
     items: int
     hit_ratio: float
     compression_ratio: float
     memory_usage: float
 
+
 @dataclass
 class ProcessingMetrics:
     """Métriques de traitement."""
+
     tasks_completed: int
     tasks_failed: int
     average_processing_time: float
     success_rate: float
     queue_size: int
 
+
 class MetricsCollector:
     """Collecteur de métriques en temps réel."""
-    
+
     def __init__(self):
         self.metrics_history: List[SystemMetrics] = []
         self.max_history = 1000
         self._last_update = time.time()
-        
+
     def collect_system_metrics(self) -> SystemMetrics:
         """Collecte les métriques système."""
-        
+
         # Métriques CPU et mémoire
         cpu_percent = psutil.cpu_percent()
         memory = psutil.virtual_memory()
-        
+
         # Métriques GPU
         gpu_util = None
         gpu_memory = None
@@ -83,37 +90,40 @@ class MetricsCollector:
                     gpu_memory = gpu.memoryUtil * 100
             except Exception:
                 pass
-                
+
         # Métriques disque
         disk = psutil.disk_usage("/")
-        
+
         metrics = SystemMetrics(
             cpu_percent=cpu_percent,
             memory_percent=memory.percent,
             gpu_utilization=gpu_util,
             gpu_memory_percent=gpu_memory,
             disk_usage_percent=disk.percent,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
-        
+
         # Mettre à jour l'historique
         self.metrics_history.append(metrics)
         if len(self.metrics_history) > self.max_history:
             self.metrics_history.pop(0)
-            
+
         return metrics
-        
+
     def get_metrics_history(self) -> List[Dict[str, Any]]:
         """Retourne l'historique des métriques."""
         return [asdict(m) for m in self.metrics_history]
 
+
 # Créer le collecteur global
 metrics_collector = MetricsCollector()
+
 
 @app.get("/")
 async def get_index():
     """Page d'accueil du moniteur."""
-    return HTMLResponse(content="""
+    return HTMLResponse(
+        content="""
 <!DOCTYPE html>
 <html>
 <head>
@@ -271,38 +281,40 @@ async def get_index():
     </script>
 </body>
 </html>
-    """)
+    """
+    )
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Endpoint WebSocket pour les mises à jour en temps réel."""
     await websocket.accept()
-    
+
     try:
         while True:
             # Collecter les métriques
             system_metrics = metrics_collector.collect_system_metrics()
-            
+
             # Envoyer les métriques
-            await websocket.send_json({
-                "system": asdict(system_metrics),
-                "cache": {
-                    "hit_ratio": 85.5,  # À remplacer par les vraies métriques
-                    "compression_ratio": 2.3
-                },
-                "processing": {
-                    "success_rate": 97.8,
-                    "queue_size": 5
+            await websocket.send_json(
+                {
+                    "system": asdict(system_metrics),
+                    "cache": {
+                        "hit_ratio": 85.5,  # À remplacer par les vraies métriques
+                        "compression_ratio": 2.3,
+                    },
+                    "processing": {"success_rate": 97.8, "queue_size": 5},
                 }
-            })
-            
+            )
+
             await asyncio.sleep(1)  # Mise à jour chaque seconde
-            
+
     except Exception as e:
         logger.error(f"Erreur WebSocket: {e}")
-        
+
     finally:
         await websocket.close()
+
 
 def start_monitor(host: str = "0.0.0.0", port: int = 8000):
     """Démarre le serveur de monitoring."""

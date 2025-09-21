@@ -1,6 +1,12 @@
 import torch
-from diffusers import ShapEPipeline
-from diffusers.utils import export_to_ply
+try:
+    from diffusers import ShapEPipeline
+    from diffusers.utils import export_to_ply
+    DIFFUSERS_AVAILABLE = True
+except ImportError:
+    DIFFUSERS_AVAILABLE = False
+    # Fallback silencieux pour les modèles de diffusion
+
 import trimesh
 import numpy as np
 import os
@@ -8,8 +14,13 @@ from datetime import datetime
 from typing import Optional
 from PIL import Image
 
-from tsr.system import TSR
-from tsr.utils import remove_background, resize_foreground
+try:
+    from tsr.system import TSR
+    from tsr.utils import remove_background, resize_foreground
+    TSR_AVAILABLE = True
+except ImportError:
+    TSR_AVAILABLE = False
+    # Fallback silencieux pour TSR
 
 # --- Configuration ---
 shap_e_model_name = "openai/shap-e"
@@ -24,7 +35,11 @@ torch_dtype = None
 
 def initialize_pipelines():
     """Initializes all 3D generation pipelines and moves them to the appropriate device."""
-    global pipe_shap_e, pipe_tripo_sr, device, torch_dtype, shap_e_model_name, tripo_sr_model_name
+    global pipe_shap_e, pipe_tripo_sr, device, torch_dtype
+
+    if not DIFFUSERS_AVAILABLE:
+        # Fallback silencieux sans pipeline de diffusion
+        return False
 
     if pipe_shap_e and pipe_tripo_sr:
         return
