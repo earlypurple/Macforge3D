@@ -1,6 +1,14 @@
 import os
 from datetime import datetime
-from .opencv_photogrammetry import create_point_cloud
+from PIL import Image, ImageDraw
+
+try:
+    from .opencv_photogrammetry import create_point_cloud
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
+    # Fallback silencieux pour OpenCV photogrammetry
+
 from .mesh_processor import repair_mesh, scale_mesh
 
 # This script now uses OpenCV-based photogrammetry instead of Meshroom
@@ -17,14 +25,14 @@ def generate_3d_model_from_images(
     """
     Generates a 3D model from a list of image files using OpenCV-based photogrammetry.
     This function is the main entry point called from the Swift application.
-    
+
     Args:
         image_paths: A list of absolute paths to the input images.
         output_dir: The base directory where the final model will be saved.
         quality: The desired quality level (affects point cloud density).
         should_repair: Boolean flag to enable/disable mesh repair.
         target_size_mm: The target size in mm for the model's longest dimension.
-        
+
     Returns:
         A string containing the path to the generated model file, or an error message.
     """
@@ -32,7 +40,9 @@ def generate_3d_model_from_images(
         return "Error: Input must be a non-empty list of image paths."
 
     print(f"🔄 Processing {len(image_paths)} images...")
-    print(f"⚙️  Options: Quality='{quality}', Repair={should_repair}, Target Size={target_size_mm}mm")
+    print(
+        f"⚙️  Options: Quality='{quality}', Repair={should_repair}, Target Size={target_size_mm}mm"
+    )
 
     # Create output directory with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -41,14 +51,17 @@ def generate_3d_model_from_images(
 
     # Generate initial point cloud
     point_cloud_path = os.path.join(run_dir, "point_cloud.ply")
-    
+
     try:
+        if not OPENCV_AVAILABLE:
+            return "Error: OpenCV photogrammetry not available. Cannot process images."
+            
         result = create_point_cloud(image_paths, point_cloud_path)
         if not result:
             return "Error: Failed to create point cloud from images."
-            
+
         current_path = result
-        
+
         # Post-process the mesh if needed
         if should_repair:
             repaired_path = os.path.join(run_dir, "model_repaired.obj")
@@ -56,17 +69,17 @@ def generate_3d_model_from_images(
                 current_path = repaired_path
             else:
                 print("⚠️  Mesh repair failed, proceeding with original mesh")
-        
+
         if target_size_mm > 0:
             scaled_path = os.path.join(run_dir, "model_final.obj")
             if scale_mesh(current_path, scaled_path, target_size_mm):
                 current_path = scaled_path
             else:
                 print("⚠️  Mesh scaling failed, using unscaled version")
-        
+
         print(f"✅ Model generation complete! Result saved at: {current_path}")
         return current_path
-        
+
     except Exception as e:
         error_msg = f"Error during model generation: {str(e)}"
         print(f"❌ {error_msg}")

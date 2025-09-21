@@ -18,9 +18,11 @@ import GPUtil
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class SystemMetrics:
     """Métriques système instantanées."""
+
     timestamp: datetime
     cpu_percent: float
     memory_percent: float
@@ -32,9 +34,11 @@ class SystemMetrics:
     io_write_bytes: float  # MB/s
     process_count: int
 
+
 @dataclass
 class SimulationMetrics:
     """Métriques spécifiques à une simulation."""
+
     simulation_id: str
     start_time: datetime
     status: str
@@ -45,133 +49,138 @@ class SimulationMetrics:
     vertices_processed: int
     error_count: int
 
+
 @dataclass
 class PerformanceAlert:
     """Alerte de performance."""
+
     timestamp: datetime
     severity: str  # 'info', 'warning', 'critical'
     message: str
     metrics: Dict
     context: Optional[Dict] = None
 
+
 class MetricsBuffer:
     """Buffer circulaire pour stocker l'historique des métriques."""
-    
+
     def __init__(self, max_size: int = 3600):  # 1 heure à 1 mesure/seconde
         self.system_metrics = deque(maxlen=max_size)
         self.simulation_metrics = deque(maxlen=max_size)
         self.alerts = deque(maxlen=1000)
-        
+
     def add_system_metrics(self, metrics: SystemMetrics):
         self.system_metrics.append(metrics)
-        
+
     def add_simulation_metrics(self, metrics: SimulationMetrics):
         self.simulation_metrics.append(metrics)
-        
+
     def add_alert(self, alert: PerformanceAlert):
         self.alerts.append(alert)
-        
+
     def get_system_metrics(self, seconds: int = 3600) -> List[SystemMetrics]:
         """Récupère les métriques système des dernières secondes."""
         now = datetime.now()
         return [
-            m for m in self.system_metrics
+            m
+            for m in self.system_metrics
             if (now - m.timestamp).total_seconds() <= seconds
         ]
-        
+
     def get_simulation_metrics(
-        self,
-        simulation_id: Optional[str] = None
+        self, simulation_id: Optional[str] = None
     ) -> List[SimulationMetrics]:
         """Récupère les métriques de simulation."""
         if simulation_id:
             return [
-                m for m in self.simulation_metrics
-                if m.simulation_id == simulation_id
+                m for m in self.simulation_metrics if m.simulation_id == simulation_id
             ]
         return list(self.simulation_metrics)
-        
+
     def get_alerts(
-        self,
-        severity: Optional[str] = None,
-        hours: int = 24
+        self, severity: Optional[str] = None, hours: int = 24
     ) -> List[PerformanceAlert]:
         """Récupère les alertes filtrées par sévérité et temps."""
         now = datetime.now()
         alerts = [
-            a for a in self.alerts
+            a
+            for a in self.alerts
             if (now - a.timestamp).total_seconds() <= hours * 3600
         ]
         if severity:
             alerts = [a for a in alerts if a.severity == severity]
         return alerts
 
+
 class PerformanceMonitor:
     """Moniteur de performances temps réel."""
-    
+
     def __init__(
         self,
         update_interval: float = 1.0,
-        alert_callbacks: Optional[List[Callable]] = None
+        alert_callbacks: Optional[List[Callable]] = None,
     ):
         self.update_interval = update_interval
         self.alert_callbacks = alert_callbacks or []
         self.metrics_buffer = MetricsBuffer()
         self.running = False
         self.monitoring_thread = None
-        
+
         # Seuils d'alerte
         self.thresholds = {
-            'cpu_percent': 90.0,
-            'memory_percent': 85.0,
-            'gpu_utilization': 95.0,
-            'io_write_bytes': 100.0,  # MB/s
-            'processing_time': 300.0  # secondes
+            "cpu_percent": 90.0,
+            "memory_percent": 85.0,
+            "gpu_utilization": 95.0,
+            "io_write_bytes": 100.0,  # MB/s
+            "processing_time": 300.0,  # secondes
         }
-        
+
     def start(self):
         """Démarre le monitoring."""
         if self.running:
             return
-            
+
         self.running = True
         self.monitoring_thread = threading.Thread(
-            target=self._monitoring_loop,
-            daemon=True
+            target=self._monitoring_loop, daemon=True
         )
         self.monitoring_thread.start()
         logger.info("Monitoring démarré")
-        
+
     def stop(self):
         """Arrête le monitoring."""
         self.running = False
         if self.monitoring_thread:
             self.monitoring_thread.join()
             logger.info("Monitoring arrêté")
-            
+
     def _monitoring_loop(self):
         """Boucle principale de monitoring."""
         last_io = psutil.disk_io_counters()
         last_time = time.time()
-        
+
         while self.running:
             try:
                 # Collecter les métriques système
                 current_time = time.time()
                 delta_time = current_time - last_time
-                
+
                 # CPU et mémoire
                 cpu_percent = psutil.cpu_percent()
                 memory = psutil.virtual_memory()
-                
+
                 # I/O
                 io = psutil.disk_io_counters()
-                io_read = (io.read_bytes - last_io.read_bytes) / delta_time / 1024 / 1024
-                io_write = (io.write_bytes - last_io.write_bytes) / delta_time / 1024 / 1024
-                
+                io_read = (
+                    (io.read_bytes - last_io.read_bytes) / delta_time / 1024 / 1024
+                )
+                io_write = (
+                    (io.write_bytes - last_io.write_bytes) / delta_time / 1024 / 1024
+                )
+
                 # GPU si disponible
                 gpu_metrics = self._get_gpu_metrics()
-                
+
                 # Créer les métriques
                 metrics = SystemMetrics(
                     timestamp=datetime.now(),
@@ -179,85 +188,80 @@ class PerformanceMonitor:
                     memory_percent=memory.percent,
                     memory_used=memory.used / 1024 / 1024,
                     memory_available=memory.available / 1024 / 1024,
-                    gpu_utilization=gpu_metrics.get('utilization'),
-                    gpu_memory_used=gpu_metrics.get('memory_used'),
+                    gpu_utilization=gpu_metrics.get("utilization"),
+                    gpu_memory_used=gpu_metrics.get("memory_used"),
                     io_read_bytes=io_read,
                     io_write_bytes=io_write,
-                    process_count=len(psutil.pids())
+                    process_count=len(psutil.pids()),
                 )
-                
+
                 # Sauvegarder les métriques
                 self.metrics_buffer.add_system_metrics(metrics)
-                
+
                 # Vérifier les seuils
                 self._check_thresholds(metrics)
-                
+
                 # Mettre à jour les références
                 last_io = io
                 last_time = current_time
-                
+
                 # Attendre
                 time.sleep(self.update_interval)
-                
+
             except Exception as e:
                 logger.error(f"Erreur dans la boucle de monitoring: {str(e)}")
                 time.sleep(self.update_interval)
-                
+
     def _get_gpu_metrics(self) -> Dict:
         """Récupère les métriques GPU si disponible."""
         try:
             gpus = GPUtil.getGPUs()
             if gpus:
                 gpu = gpus[0]  # Premier GPU
-                return {
-                    'utilization': gpu.load * 100,
-                    'memory_used': gpu.memoryUsed
-                }
+                return {"utilization": gpu.load * 100, "memory_used": gpu.memoryUsed}
         except Exception as e:
             logger.debug(f"Impossible d'obtenir les métriques GPU: {str(e)}")
-        return {'utilization': None, 'memory_used': None}
-        
+        return {"utilization": None, "memory_used": None}
+
     def _check_thresholds(self, metrics: SystemMetrics):
         """Vérifie les seuils et génère des alertes si nécessaire."""
         # CPU
-        if metrics.cpu_percent > self.thresholds['cpu_percent']:
+        if metrics.cpu_percent > self.thresholds["cpu_percent"]:
             self._create_alert(
-                'warning',
+                "warning",
                 f"Utilisation CPU élevée: {metrics.cpu_percent:.1f}%",
-                metrics
+                metrics,
             )
-            
+
         # Mémoire
-        if metrics.memory_percent > self.thresholds['memory_percent']:
+        if metrics.memory_percent > self.thresholds["memory_percent"]:
             self._create_alert(
-                'critical',
-                f"Mémoire critique: {metrics.memory_percent:.1f}%",
-                metrics
+                "critical", f"Mémoire critique: {metrics.memory_percent:.1f}%", metrics
             )
-            
+
         # GPU
-        if (metrics.gpu_utilization and 
-            metrics.gpu_utilization > self.thresholds['gpu_utilization']):
+        if (
+            metrics.gpu_utilization
+            and metrics.gpu_utilization > self.thresholds["gpu_utilization"]
+        ):
             self._create_alert(
-                'warning',
+                "warning",
                 f"Utilisation GPU élevée: {metrics.gpu_utilization:.1f}%",
-                metrics
+                metrics,
             )
-            
+
         # I/O
-        if metrics.io_write_bytes > self.thresholds['io_write_bytes']:
+        if metrics.io_write_bytes > self.thresholds["io_write_bytes"]:
             self._create_alert(
-                'info',
-                f"I/O élevé: {metrics.io_write_bytes:.1f}MB/s",
-                metrics
+                "info", f"I/O élevé: {metrics.io_write_bytes:.1f}MB/s", metrics
             )
-            
+
     def _create_alert(
         self,
         severity: str,
         message: str,
         metrics: SystemMetrics,
-        context: Optional[Dict] = None
+        context: Optional[Dict] = None,
     ):
         """Crée et enregistre une alerte."""
         alert = PerformanceAlert(
@@ -265,54 +269,54 @@ class PerformanceMonitor:
             severity=severity,
             message=message,
             metrics=metrics.__dict__,
-            context=context
+            context=context,
         )
-        
+
         self.metrics_buffer.add_alert(alert)
-        
+
         # Notifier les callbacks
         for callback in self.alert_callbacks:
             try:
                 callback(alert)
             except Exception as e:
                 logger.error(f"Erreur dans le callback d'alerte: {str(e)}")
-                
+
     def add_simulation_metrics(self, metrics: SimulationMetrics):
         """Ajoute des métriques de simulation."""
         self.metrics_buffer.add_simulation_metrics(metrics)
-        
+
         # Vérifier le temps de traitement
-        if metrics.processing_time > self.thresholds['processing_time']:
+        if metrics.processing_time > self.thresholds["processing_time"]:
             self._create_alert(
-                'warning',
+                "warning",
                 f"Simulation longue: {metrics.processing_time:.1f}s",
                 None,
-                {'simulation_id': metrics.simulation_id}
+                {"simulation_id": metrics.simulation_id},
             )
-            
+
     def get_performance_report(self) -> Dict:
         """Génère un rapport de performance."""
         system_metrics = self.metrics_buffer.get_system_metrics(3600)
-        
+
         if not system_metrics:
             return {}
-            
+
         # Calculer les statistiques
         cpu_data = [m.cpu_percent for m in system_metrics]
         mem_data = [m.memory_percent for m in system_metrics]
-        
+
         return {
-            'period': '1h',
-            'cpu': {
-                'avg': np.mean(cpu_data),
-                'max': np.max(cpu_data),
-                'p95': np.percentile(cpu_data, 95)
+            "period": "1h",
+            "cpu": {
+                "avg": np.mean(cpu_data),
+                "max": np.max(cpu_data),
+                "p95": np.percentile(cpu_data, 95),
             },
-            'memory': {
-                'avg': np.mean(mem_data),
-                'max': np.max(mem_data),
-                'p95': np.percentile(mem_data, 95)
+            "memory": {
+                "avg": np.mean(mem_data),
+                "max": np.max(mem_data),
+                "p95": np.percentile(mem_data, 95),
             },
-            'alerts': len(self.metrics_buffer.get_alerts(hours=1)),
-            'simulations': len(self.metrics_buffer.get_simulation_metrics())
+            "alerts": len(self.metrics_buffer.get_alerts(hours=1)),
+            "simulations": len(self.metrics_buffer.get_simulation_metrics()),
         }
